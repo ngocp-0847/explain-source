@@ -8,7 +8,7 @@ export const useSocket = () => {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        const newSocket = new WebSocket('ws://localhost:8080/ws')
+        const newSocket = new WebSocket('ws://localhost:9000/ws')
         
         newSocket.onopen = () => {
           setIsConnected(true)

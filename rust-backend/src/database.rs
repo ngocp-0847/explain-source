@@ -1,0 +1,370 @@
+use anyhow::Result;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use sqlx::{sqlite::SqlitePool, FromRow, Row};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TicketRecord {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub code_context: Option<String>,
+    pub analysis_result: Option<String>,
+    pub is_analyzing: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredLogRecord {
+    pub id: String,
+    pub ticket_id: String,
+    pub message_type: String,
+    pub content: String,
+    pub raw_log: Option<String>,
+    pub metadata: Option<String>, // JSON string
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AnalysisSession {
+    pub id: String,
+    pub ticket_id: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub status: String,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct Database {
+    pool: SqlitePool,
+}
+
+impl Database {
+    pub async fn new(database_url: &str) -> Result<Self> {
+        let pool = SqlitePool::connect(database_url).await?;
+        Ok(Self { pool })
+    }
+
+    pub async fn init_schema(&self) -> Result<()> {
+        // Create tickets table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS tickets (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('todo', 'in-progress', 'done')),
+                code_context TEXT,
+                analysis_result TEXT,
+                is_analyzing BOOLEAN DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Create structured_logs table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS structured_logs (
+                id TEXT PRIMARY KEY,
+                ticket_id TEXT NOT NULL,
+                message_type TEXT NOT NULL CHECK(message_type IN ('tool_use', 'assistant', 'error', 'system')),
+                content TEXT NOT NULL,
+                raw_log TEXT,
+                metadata TEXT,
+                timestamp TEXT NOT NULL,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Create indexes
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_logs_ticket_id ON structured_logs(ticket_id)")
+            .execute(&self.pool)
+            .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON structured_logs(timestamp)")
+            .execute(&self.pool)
+            .await?;
+
+        // Create analysis_sessions table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS analysis_sessions (
+                id TEXT PRIMARY KEY,
+                ticket_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+                error_message TEXT,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    // Ticket CRUD operations
+    pub async fn create_ticket(&self, ticket: &TicketRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO tickets (id, title, description, status, code_context, analysis_result, is_analyzing, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            "#,
+        )
+        .bind(&ticket.id)
+        .bind(&ticket.title)
+        .bind(&ticket.description)
+        .bind(&ticket.status)
+        .bind(&ticket.code_context)
+        .bind(&ticket.analysis_result)
+        .bind(ticket.is_analyzing)
+        .bind(&ticket.created_at)
+        .bind(&ticket.updated_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_ticket(&self, ticket: &TicketRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE tickets
+            SET title = ?1, description = ?2, status = ?3, code_context = ?4,
+                analysis_result = ?5, is_analyzing = ?6, updated_at = ?7
+            WHERE id = ?8
+            "#,
+        )
+        .bind(&ticket.title)
+        .bind(&ticket.description)
+        .bind(&ticket.status)
+        .bind(&ticket.code_context)
+        .bind(&ticket.analysis_result)
+        .bind(ticket.is_analyzing)
+        .bind(&ticket.updated_at)
+        .bind(&ticket.id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_ticket_status(&self, ticket_id: &str, status: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE tickets
+            SET status = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(status)
+        .bind(now)
+        .bind(ticket_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_ticket_analyzing(&self, ticket_id: &str, is_analyzing: bool) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE tickets
+            SET is_analyzing = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(is_analyzing)
+        .bind(now)
+        .bind(ticket_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_ticket_result(&self, ticket_id: &str, result: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE tickets
+            SET analysis_result = ?1, is_analyzing = ?2, updated_at = ?3
+            WHERE id = ?4
+            "#,
+        )
+        .bind(result)
+        .bind(false)
+        .bind(now)
+        .bind(ticket_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_ticket(&self, id: &str) -> Result<Option<TicketRecord>> {
+        let ticket = sqlx::query_as::<_, TicketRecord>(
+            "SELECT * FROM tickets WHERE id = ?1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(ticket)
+    }
+
+    pub async fn list_tickets(&self) -> Result<Vec<TicketRecord>> {
+        let tickets = sqlx::query_as::<_, TicketRecord>(
+            "SELECT * FROM tickets ORDER BY created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(tickets)
+    }
+
+    pub async fn delete_ticket(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM tickets WHERE id = ?1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    // Log operations
+    pub async fn save_log(&self, log: &StructuredLogRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO structured_logs (id, ticket_id, message_type, content, raw_log, metadata, timestamp)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(&log.id)
+        .bind(&log.ticket_id)
+        .bind(&log.message_type)
+        .bind(&log.content)
+        .bind(&log.raw_log)
+        .bind(&log.metadata)
+        .bind(&log.timestamp)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_logs_for_ticket(&self, ticket_id: &str) -> Result<Vec<StructuredLogRecord>> {
+        let logs = sqlx::query(
+            "SELECT id, ticket_id, message_type, content, raw_log, metadata, timestamp FROM structured_logs WHERE ticket_id = ?1 ORDER BY timestamp ASC"
+        )
+        .bind(ticket_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut result = Vec::new();
+        for row in logs {
+            result.push(StructuredLogRecord {
+                id: row.get("id"),
+                ticket_id: row.get("ticket_id"),
+                message_type: row.get("message_type"),
+                content: row.get("content"),
+                raw_log: row.get("raw_log"),
+                metadata: row.get("metadata"),
+                timestamp: row.get("timestamp"),
+            });
+        }
+
+        Ok(result)
+    }
+
+    pub async fn clear_logs_for_ticket(&self, ticket_id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM structured_logs WHERE ticket_id = ?1")
+            .bind(ticket_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    // Analysis session operations
+    pub async fn create_session(&self, ticket_id: &str) -> Result<String> {
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let started_at = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            INSERT INTO analysis_sessions (id, ticket_id, started_at, status)
+            VALUES (?1, ?2, ?3, 'running')
+            "#,
+        )
+        .bind(&session_id)
+        .bind(ticket_id)
+        .bind(started_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(session_id)
+    }
+
+    pub async fn complete_session(&self, session_id: &str, _result: &str) -> Result<()> {
+        let completed_at = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            UPDATE analysis_sessions
+            SET status = 'completed', completed_at = ?1
+            WHERE id = ?2
+            "#,
+        )
+        .bind(completed_at)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn fail_session(&self, session_id: &str, error: &str) -> Result<()> {
+        let completed_at = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            UPDATE analysis_sessions
+            SET status = 'failed', completed_at = ?1, error_message = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(completed_at)
+        .bind(error)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_session(&self, session_id: &str) -> Result<Option<AnalysisSession>> {
+        let session = sqlx::query_as::<_, AnalysisSession>(
+            "SELECT * FROM analysis_sessions WHERE id = ?1"
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(session)
+    }
+}

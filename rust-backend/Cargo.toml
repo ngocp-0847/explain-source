@@ -18,3 +18,5 @@ thiserror = "1.0"
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite"] }
+regex = "1.10"

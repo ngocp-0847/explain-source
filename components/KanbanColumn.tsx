@@ -11,14 +11,16 @@ interface KanbanColumnProps {
   color: string
   tickets: Ticket[]
   onEditTicket: (ticket: Ticket) => void
+  onCardClick: (ticket: Ticket) => void
 }
 
-export function KanbanColumn({ 
-  status, 
-  title, 
-  color, 
-  tickets, 
-  onEditTicket 
+export function KanbanColumn({
+  status,
+  title,
+  color,
+  tickets,
+  onEditTicket,
+  onCardClick
 }: KanbanColumnProps) {
   const { setNodeRef } = useDroppable({
     id: status,
@@ -43,6 +45,7 @@ export function KanbanColumn({
               key={ticket.id}
               ticket={ticket}
               onEdit={onEditTicket}
+              onClick={onCardClick}
             />
           ))}
         </div>

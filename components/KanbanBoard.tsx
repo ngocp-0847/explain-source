@@ -7,6 +7,7 @@ import { PlusIcon } from 'lucide-react'
 interface KanbanBoardProps {
   tickets: Ticket[]
   onEditTicket: (ticket: Ticket) => void
+  onCardClick: (ticket: Ticket) => void
 }
 
 const columns: { id: TicketStatus; title: string; color: string }[] = [
@@ -15,7 +16,7 @@ const columns: { id: TicketStatus; title: string; color: string }[] = [
   { id: 'done', title: 'Hoàn Thành', color: 'bg-green-100' }
 ]
 
-export function KanbanBoard({ tickets, onEditTicket }: KanbanBoardProps) {
+export function KanbanBoard({ tickets, onEditTicket, onCardClick }: KanbanBoardProps) {
   return (
     <div className="flex space-x-6 overflow-x-auto pb-4">
       {columns.map(column => (
@@ -26,6 +27,7 @@ export function KanbanBoard({ tickets, onEditTicket }: KanbanBoardProps) {
           color={column.color}
           tickets={tickets.filter(ticket => ticket.status === column.id)}
           onEditTicket={onEditTicket}
+          onCardClick={onCardClick}
         />
       ))}
     </div>

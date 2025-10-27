@@ -1,2 +1,86 @@
 2025-10-27T04:58:41: 2025-10-27T04:58:41.339524Z  INFO qa_chatbot_backend: Server đang chạy trên 0.0.0.0:8080
 2025-10-27T05:02:34: 2025-10-27T05:02:34.344478Z  INFO qa_chatbot_backend: Server đang chạy trên 0.0.0.0:8080
+2025-10-27T14:03:30: [2m2025-10-27T07:03:30.863341Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:31: [2m2025-10-27T07:03:31.217000Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:31: [2m2025-10-27T07:03:31.522870Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:31: [2m2025-10-27T07:03:31.844625Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:32: [2m2025-10-27T07:03:32.114227Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:32: [2m2025-10-27T07:03:32.401888Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:32: [2m2025-10-27T07:03:32.704170Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:32: [2m2025-10-27T07:03:32.998319Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:33: [2m2025-10-27T07:03:33.281369Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:33: [2m2025-10-27T07:03:33.602662Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:33: [2m2025-10-27T07:03:33.962529Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:34: [2m2025-10-27T07:03:34.266808Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:34: [2m2025-10-27T07:03:34.569642Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:34: [2m2025-10-27T07:03:34.874924Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:35: [2m2025-10-27T07:03:35.164488Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:35: [2m2025-10-27T07:03:35.485020Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:03:35: [2m2025-10-27T07:03:35.801351Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8081
+2025-10-27T14:14:50: [2m2025-10-27T07:14:50.587010Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:50: [2m2025-10-27T07:14:50.942444Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:51: [2m2025-10-27T07:14:51.312910Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:51: [2m2025-10-27T07:14:51.620454Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:51: [2m2025-10-27T07:14:51.913106Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:52: [2m2025-10-27T07:14:52.205806Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:52: [2m2025-10-27T07:14:52.512798Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:52: [2m2025-10-27T07:14:52.798030Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:53: [2m2025-10-27T07:14:53.140986Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:53: [2m2025-10-27T07:14:53.457638Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:53: [2m2025-10-27T07:14:53.788829Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:54: [2m2025-10-27T07:14:54.086233Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:54: [2m2025-10-27T07:14:54.421758Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:54: [2m2025-10-27T07:14:54.745099Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:55: [2m2025-10-27T07:14:55.045356Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:14:55: [2m2025-10-27T07:14:55.433321Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:8082
+2025-10-27T14:15:42: [2m2025-10-27T07:15:42.109261Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m Server đang chạy trên 0.0.0.0:9000
+2025-10-27T14:17:46: [2m2025-10-27T07:17:46.712729Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: da690ef7-1b56-4903-bd1e-fb867636966d
+2025-10-27T14:17:46: [2m2025-10-27T07:17:46.724516Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: 903effef-3347-4633-8de1-866b6b420487
+2025-10-27T14:18:59: [2m2025-10-27T07:18:59.607850Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client da690ef7-1b56-4903-bd1e-fb867636966d đã đóng kết nối
+2025-10-27T14:18:59: [2m2025-10-27T07:18:59.609657Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client da690ef7-1b56-4903-bd1e-fb867636966d đã ngắt kết nối
+2025-10-27T14:18:59: [2m2025-10-27T07:18:59.613064Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client 903effef-3347-4633-8de1-866b6b420487 đã đóng kết nối
+2025-10-27T14:18:59: [2m2025-10-27T07:18:59.613087Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client 903effef-3347-4633-8de1-866b6b420487 đã ngắt kết nối
+2025-10-27T14:19:00: [2m2025-10-27T07:19:00.432019Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: b7174ed3-4b14-4751-a035-329c147fa8c2
+2025-10-27T14:19:00: [2m2025-10-27T07:19:00.457135Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: b5f67f0f-b491-47cf-9e49-85796af62821
+2025-10-27T14:37:16: [2m2025-10-27T07:37:16.471702Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client b5f67f0f-b491-47cf-9e49-85796af62821 đã đóng kết nối
+2025-10-27T14:37:16: [2m2025-10-27T07:37:16.472225Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client b5f67f0f-b491-47cf-9e49-85796af62821 đã ngắt kết nối
+2025-10-27T14:37:16: [2m2025-10-27T07:37:16.522413Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client b7174ed3-4b14-4751-a035-329c147fa8c2 đã đóng kết nối
+2025-10-27T14:37:16: [2m2025-10-27T07:37:16.522975Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client b7174ed3-4b14-4751-a035-329c147fa8c2 đã ngắt kết nối
+2025-10-27T14:37:17: [2m2025-10-27T07:37:17.502839Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: 78eee448-98e7-4beb-b671-af94e72981dd
+2025-10-27T14:37:17: [2m2025-10-27T07:37:17.515433Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: d9dd7d17-1cdf-49cc-8366-57f69ea5b14d
+2025-10-27T14:59:22: [2m2025-10-27T07:59:22.829596Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: 84b4bad8-cc8e-4975-8adb-77ae4198fd2a
+2025-10-27T14:59:22: [2m2025-10-27T07:59:22.843999Z[0m [32m INFO[0m [2mqa_chatbot_backend::websocket_handler[0m[2m:[0m Client mới kết nối: 16e292b8-3084-4388-8c6a-eda0c890b14f
+2025-10-27T15:04:07: [2m2025-10-27T08:04:07.115996Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:07: [2m2025-10-27T08:04:07.116127Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:07: [2m2025-10-27T08:04:07.648079Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:07: [2m2025-10-27T08:04:07.648284Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:08: [2m2025-10-27T08:04:08.130399Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:08: [2m2025-10-27T08:04:08.130522Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:08: [2m2025-10-27T08:04:08.580327Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:08: [2m2025-10-27T08:04:08.580458Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:09: [2m2025-10-27T08:04:09.009630Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:09: [2m2025-10-27T08:04:09.009896Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:09: [2m2025-10-27T08:04:09.479805Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:09: [2m2025-10-27T08:04:09.479926Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:09: [2m2025-10-27T08:04:09.928462Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:09: [2m2025-10-27T08:04:09.928684Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:10: [2m2025-10-27T08:04:10.380751Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:10: [2m2025-10-27T08:04:10.381020Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:10: [2m2025-10-27T08:04:10.851074Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:10: [2m2025-10-27T08:04:10.851370Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:11: [2m2025-10-27T08:04:11.300100Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:11: [2m2025-10-27T08:04:11.300302Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:11: [2m2025-10-27T08:04:11.757975Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:11: [2m2025-10-27T08:04:11.758194Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:12: [2m2025-10-27T08:04:12.196800Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:12: [2m2025-10-27T08:04:12.197100Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:12: [2m2025-10-27T08:04:12.674571Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:12: [2m2025-10-27T08:04:12.674792Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:13: [2m2025-10-27T08:04:13.132696Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:13: [2m2025-10-27T08:04:13.132894Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:13: [2m2025-10-27T08:04:13.585691Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:13: [2m2025-10-27T08:04:13.585896Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:14: [2m2025-10-27T08:04:14.048360Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:14: [2m2025-10-27T08:04:14.048788Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
+2025-10-27T15:04:14: [2m2025-10-27T08:04:14.574663Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 🚀 Khởi động QA Chatbot Backend...
+2025-10-27T15:04:14: [2m2025-10-27T08:04:14.574869Z[0m [32m INFO[0m [2mqa_chatbot_backend[0m[2m:[0m 📊 Kết nối database: sqlite:./qa_chatbot.db
