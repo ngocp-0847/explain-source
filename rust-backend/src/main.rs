@@ -78,38 +78,15 @@ async fn main() {
         .await
         .expect("Failed to initialize database schema");
 
-    info!("✅ Database schema initialized");
+    // Run database migrations
+    database
+        .run_migrations()
+        .await
+        .expect("Failed to run database migrations");
 
-    // Clear old data and seed sample projects
-    info!("🗑️ Clearing old tickets data...");
-    database.clear_all_tickets().await.expect("Failed to clear tickets");
-    info!("✅ Old data cleared");
+    info!("✅ Database schema initialized and migrations applied");
 
-    // Seed sample projects
-    info!("🌱 Seeding sample projects...");
-    let sample_projects = vec![
-        crate::database::ProjectRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            name: "E-commerce Platform".to_string(),
-            description: Some("Phân tích flow thanh toán và quản lý đơn hàng".to_string()),
-            directory_path: "/home/phan.ngoc@sun-asterisk.com/Documents/projects/explain-source/rust-backend".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            updated_at: chrono::Utc::now().to_rfc3339(),
-        },
-        crate::database::ProjectRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            name: "Blog CMS".to_string(),
-            description: Some("Hệ thống quản lý nội dung và authentication".to_string()),
-            directory_path: "/home/phan.ngoc@sun-asterisk.com/Documents/projects/explain-source".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            updated_at: chrono::Utc::now().to_rfc3339(),
-        },
-    ];
-
-    for project in &sample_projects {
-        database.create_project(project).await.expect("Failed to create project");
-    }
-    info!("✅ Seeded {} sample projects", sample_projects.len());
+    info!("📊 Database persistence enabled - keeping existing data");
 
     // Initialize message store
     let msg_store = Arc::new(MsgStore::new(database.clone()));

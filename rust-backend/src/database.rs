@@ -117,7 +117,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS structured_logs (
                 id TEXT PRIMARY KEY,
                 ticket_id TEXT NOT NULL,
-                message_type TEXT NOT NULL CHECK(message_type IN ('tool_use', 'assistant', 'error', 'system')),
+                message_type TEXT NOT NULL CHECK(message_type IN ('tool_use', 'assistant', 'error', 'system', 'result')),
                 content TEXT NOT NULL,
                 raw_log TEXT,
                 metadata TEXT,
@@ -503,14 +503,44 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_session(&self, session_id: &str) -> Result<Option<AnalysisSession>> {
-        let session = sqlx::query_as::<_, AnalysisSession>(
-            "SELECT * FROM analysis_sessions WHERE id = ?1"
+    pub async fn run_migrations(&self) -> Result<()> {
+        // Check migrations table exists
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS migrations (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                applied_at TEXT NOT NULL
+            )"
         )
-        .bind(session_id)
-        .fetch_optional(&self.pool)
+        .execute(&self.pool)
         .await?;
 
-        Ok(session)
+        // Run 001_add_result_message_type if not applied
+        let migration_name = "001_add_result_message_type";
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM migrations WHERE name = ?1"
+        )
+        .bind(migration_name)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if exists == 0 {
+            // Read migration SQL file
+            let migration_sql = include_str!("../migrations/001_add_result_message_type.sql");
+            
+            // Execute migration SQL
+            sqlx::query(migration_sql)
+                .execute(&self.pool)
+                .await?;
+            
+            // Mark as applied
+            sqlx::query("INSERT INTO migrations (name, applied_at) VALUES (?1, ?2)")
+                .bind(migration_name)
+                .bind(chrono::Utc::now().to_rfc3339())
+                .execute(&self.pool)
+                .await?;
+        }
+
+        Ok(())
     }
 }
