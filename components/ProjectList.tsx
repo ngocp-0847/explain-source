@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
-import { useWebSocketStore } from '@/stores/websocketStore'
+import { projectApi } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,23 +15,41 @@ interface ProjectListProps {
 
 export function ProjectList({ onCreateProject }: ProjectListProps) {
   const { projects, setProjects } = useProjectStore()
-  const { isConnected, send } = useWebSocketStore()
   const router = useRouter()
 
   useEffect(() => {
-    if (isConnected) {
-      send({ type: 'load-projects' })
+    const loadProjects = async () => {
+      try {
+        const data = await projectApi.list()
+        // Map API response to frontend format
+        const mappedProjects = data.map((project: any) => ({
+          ...project,
+          directoryPath: project.directory_path,
+          createdAt: project.created_at,
+          updatedAt: project.updated_at,
+        }))
+        setProjects(mappedProjects)
+      } catch (error) {
+        console.error('Failed to load projects:', error)
+      }
     }
-  }, [isConnected, send])
+    loadProjects()
+  }, [setProjects])
 
   const handleProjectClick = (projectId: string) => {
     router.push(`/projects/${projectId}`)
   }
 
-  const handleDelete = (projectId: string, e: React.MouseEvent) => {
+  const handleDelete = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (confirm('Bạn có chắc muốn xóa project này?')) {
-      send({ type: 'delete-project', projectId })
+      try {
+        await projectApi.delete(projectId)
+        // Remove from store
+        setProjects(projects.filter(p => p.id !== projectId))
+      } catch (error) {
+        console.error('Failed to delete project:', error)
+      }
     }
   }
 

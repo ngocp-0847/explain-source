@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useProjectStore } from '@/stores/projectStore'
-import { useWebSocketStore } from '@/stores/websocketStore'
+import { projectApi } from '@/lib/api'
 import { Project } from '@/types/ticket'
+import { useRouter } from 'next/navigation'
 
 interface ProjectFormDialogProps {
   isOpen: boolean
@@ -25,7 +26,7 @@ interface ProjectFormValues {
 
 export function ProjectFormDialog({ isOpen, onClose, project }: ProjectFormDialogProps) {
   const { addProject, updateProject } = useProjectStore()
-  const { send } = useWebSocketStore()
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const form = useForm<ProjectFormValues>({
@@ -57,45 +58,36 @@ export function ProjectFormDialog({ isOpen, onClose, project }: ProjectFormDialo
 
     try {
       if (project) {
-        // Edit mode
-        const updatedProject: Partial<Project> = {
+        // Edit mode - Update via API
+        const updatedProject = await projectApi.update(project.id, {
           name: data.name,
           description: data.description || undefined,
-          directoryPath: data.directoryPath,
-        }
-
-        updateProject(project.id, updatedProject)
-
-        send({
-          type: 'update-project',
-          id: project.id,
-          name: data.name,
-          description: data.description || undefined,
-          directoryPath: data.directoryPath,
+          directory_path: data.directoryPath,
+        })
+        
+        updateProject(project.id, {
+          ...updatedProject,
+          directoryPath: updatedProject.directory_path,
+          createdAt: updatedProject.created_at,
+          updatedAt: updatedProject.updated_at,
         })
       } else {
         // Create mode
-        const projectId = crypto.randomUUID()
-        const now = new Date().toISOString()
-
-        const newProject: Project = {
-          id: projectId,
+        const newProject = await projectApi.create({
           name: data.name,
           description: data.description || undefined,
-          directoryPath: data.directoryPath,
-          createdAt: now,
-          updatedAt: now,
-        }
-
-        addProject(newProject)
-
-        send({
-          type: 'create-project',
-          id: projectId,
-          name: data.name,
-          description: data.description || undefined,
-          directoryPath: data.directoryPath,
+          directory_path: data.directoryPath,
         })
+
+        addProject({
+          ...newProject,
+          directoryPath: newProject.directory_path,
+          createdAt: newProject.created_at,
+          updatedAt: newProject.updated_at,
+        })
+
+        // Navigate to new project
+        router.push(`/projects/${newProject.id}`)
       }
 
       onClose()

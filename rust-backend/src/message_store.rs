@@ -13,6 +13,7 @@ pub enum LogMessageType {
     Assistant,
     Error,
     System,
+    Result,
 }
 
 impl LogMessageType {
@@ -22,6 +23,7 @@ impl LogMessageType {
             LogMessageType::Assistant => "assistant",
             LogMessageType::Error => "error",
             LogMessageType::System => "system",
+            LogMessageType::Result => "result",
         }
     }
 
@@ -30,6 +32,7 @@ impl LogMessageType {
             "tool_use" => LogMessageType::ToolUse,
             "assistant" => LogMessageType::Assistant,
             "error" => LogMessageType::Error,
+            "result" => LogMessageType::Result,
             _ => LogMessageType::System,
         }
     }

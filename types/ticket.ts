@@ -1,6 +1,6 @@
 export type TicketStatus = 'todo' | 'in-progress' | 'done'
 
-export type LogMessageType = 'tool_use' | 'assistant' | 'error' | 'system'
+export type LogMessageType = 'tool_use' | 'assistant' | 'error' | 'system' | 'result'
 
 export interface Project {
   id: string
@@ -59,9 +59,20 @@ export interface WebSocketMessage {
   [key: string]: any
 }
 
+// Raw log structure từ backend (snake_case)
+export interface RawStructuredLog {
+  id: string
+  ticket_id: string
+  message_type: LogMessageType
+  content: string
+  raw_log?: string
+  metadata?: Record<string, string>
+  timestamp: string
+}
+
 export interface StructuredLogMessage extends WebSocketMessage {
   message_type: 'structured-log'
-  log: StructuredLog
+  log: RawStructuredLog
 }
 
 export interface CodeAnalysisCompleteMessage extends WebSocketMessage {
@@ -80,5 +91,5 @@ export interface CodeAnalysisErrorMessage extends WebSocketMessage {
 
 // Type guard để validate LogMessageType
 export function isValidLogMessageType(type: string): type is LogMessageType {
-  return ['tool_use', 'assistant', 'error', 'system'].includes(type)
+  return ['tool_use', 'assistant', 'error', 'system', 'result'].includes(type)
 }

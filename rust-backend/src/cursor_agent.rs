@@ -6,15 +6,97 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::time::{sleep, Duration};
-use tracing::{error, info};
+use tokio::time::{Duration, timeout};
+use tracing::{error, info, warn, debug};
+
+#[derive(Debug, thiserror::Error)]
+pub enum CursorAgentError {
+    #[error("Process timeout after {0}s")]
+    Timeout(u64),
+    #[error("Process failed with exit code {0}")]
+    ProcessFailed(i32),
+    #[error("Executable not found: {0}")]
+    ExecutableNotFound(String),
+    #[error("Process spawn failed: {0}")]
+    SpawnFailed(String),
+    #[error("Working directory not accessible: {0}")]
+    DirectoryNotAccessible(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct CursorAgentConfig {
+    pub executable_path: String,
+    pub timeout_seconds: u64,
+    pub max_retries: u32,
+    pub working_dir: Option<String>,
+    pub output_format: OutputFormat,
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputFormat {
+    Text,
+    Json,
+    StreamJson,
+    StreamPartialOutput,
+}
+
+impl Default for CursorAgentConfig {
+    fn default() -> Self {
+        Self {
+            executable_path: "cursor-agent".to_string(),
+            timeout_seconds: 300, // 5 minutes
+            max_retries: 2,
+            working_dir: None,
+            output_format: OutputFormat::StreamJson,
+            api_key: std::env::var("CURSOR_API_KEY").ok(),
+        }
+    }
+}
+
+impl CursorAgentConfig {
+    pub fn from_env() -> Self {
+        let output_format = match std::env::var("CURSOR_AGENT_OUTPUT_FORMAT")
+            .unwrap_or_else(|_| "stream-json".to_string())
+            .as_str()
+        {
+            "text" => OutputFormat::Text,
+            "json" => OutputFormat::Json,
+            "stream-json" => OutputFormat::StreamJson,
+            "stream-partial" => OutputFormat::StreamPartialOutput,
+            _ => OutputFormat::StreamJson,
+        };
+
+        Self {
+            executable_path: std::env::var("CURSOR_AGENT_PATH")
+                .unwrap_or_else(|_| "cursor-agent".to_string()),
+            timeout_seconds: std::env::var("CURSOR_AGENT_TIMEOUT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(300),
+            max_retries: std::env::var("CURSOR_AGENT_MAX_RETRIES")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(2),
+            working_dir: std::env::var("CURSOR_AGENT_WORKING_DIR").ok(),
+            output_format,
+            api_key: std::env::var("CURSOR_API_KEY").ok(),
+        }
+    }
+}
 
 #[derive(Debug)]
-pub struct CursorAgent;
+pub struct CursorAgent {
+    config: CursorAgentConfig,
+}
 
 impl CursorAgent {
     pub fn new() -> Self {
-        Self
+        Self::with_config(CursorAgentConfig::from_env())
+    }
+
+    pub fn with_config(config: CursorAgentConfig) -> Self {
+        Self { config }
     }
 
     pub async fn analyze_code(
@@ -33,6 +115,7 @@ impl CursorAgent {
             // Auto-create ticket to prevent FK constraint failure
             let auto_ticket = crate::database::TicketRecord {
                 id: request.ticket_id.clone(),
+                project_id: request.project_id.clone(),
                 title: "Auto-created".to_string(),
                 description: request.question.clone(),
                 status: "in-progress".to_string(),
@@ -67,20 +150,35 @@ impl CursorAgent {
         msg_store.push(entry).await;
         logs.push(start_log.to_string());
 
+        // Get project directory for analysis scope
+        let working_directory = if !request.project_id.is_empty() {
+            if let Ok(Some(project)) = database.get_project(&request.project_id).await {
+                info!("📂 Working directory: {}", project.directory_path);
+                Some(project.directory_path)
+            } else {
+                error!("⚠️ Không tìm thấy project {}", request.project_id);
+                None
+            }
+        } else {
+            None
+        };
+
         // Execute Cursor Agent analysis
         let result = match self
-            .execute_cursor_agent(&request, &msg_store, &normalizer)
+            .execute_cursor_agent(&request, working_directory, &msg_store, &normalizer)
             .await
         {
             Ok(output) => {
                 info!("✅ Cursor Agent hoàn thành phân tích");
 
-                // Send completion log
+                // Send completion log with special result type
                 let completion_log = "✅ Phân tích hoàn tất!";
-                let entry = normalizer.normalize(
+                let mut entry = normalizer.normalize(
                     completion_log.to_string(),
                     request.ticket_id.clone(),
                 );
+                // Override message type to 'result' for completion
+                entry.message_type = crate::message_store::LogMessageType::Result;
                 msg_store.push(entry).await;
                 logs.push(completion_log.to_string());
 
@@ -122,360 +220,254 @@ impl CursorAgent {
     async fn execute_cursor_agent(
         &self,
         request: &CodeAnalysisRequest,
+        working_directory: Option<String>,
         msg_store: &Arc<MsgStore>,
         normalizer: &LogNormalizer,
     ) -> Result<String> {
-        // For now, we'll simulate the Cursor Agent with realistic logging
-        // In production, this would spawn an actual Cursor Agent process
-        // and capture its stdout/stderr
-
         info!("🎯 Executing analysis for: {}", request.code_context);
-
-        // Simulate analysis steps with realistic logs
-        let analysis_steps = self.simulate_cursor_agent_analysis(request, msg_store, normalizer).await;
-
-        Ok(analysis_steps)
-    }
-
-    async fn simulate_cursor_agent_analysis(
-        &self,
-        request: &CodeAnalysisRequest,
-        msg_store: &Arc<MsgStore>,
-        normalizer: &LogNormalizer,
-    ) -> String {
-        let ticket_id = request.ticket_id.clone();
-
-        // Step 1: Initialize
-        self.stream_log(
-            "🔍 Khởi tạo phân tích code...",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(500)).await;
-
-        // Step 2: Reading file
-        let file_log = format!("📂 Reading file: {}", request.code_context);
-        self.stream_log(&file_log, &ticket_id, msg_store, normalizer)
-            .await;
-        sleep(Duration::from_millis(800)).await;
-
-        // Step 3: Analyzing code structure
-        self.stream_log(
-            "🔧 Using tool: code_analyzer",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(600)).await;
-
-        self.stream_log(
-            "🏗️  Analyzing code structure and dependencies...",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(1000)).await;
-
-        // Step 4: Business flow analysis
-        self.stream_log(
-            "💼 Analysis: Extracting business flow patterns...",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(800)).await;
-
-        // Step 5: Finding key components
-        self.stream_log(
-            "🔍 Found: 5 key functions and 3 data flow paths",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(600)).await;
-
-        // Step 6: Test case generation
-        self.stream_log(
-            "📝 Generating test case recommendations...",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(700)).await;
-
-        // Step 7: Final summary
-        self.stream_log(
-            "✨ Summary: Analysis complete with 12 findings",
-            &ticket_id,
-            msg_store,
-            normalizer,
-        )
-        .await;
-        sleep(Duration::from_millis(500)).await;
-
-        // Generate comprehensive analysis result based on context
-        self.generate_analysis_result(request)
-    }
-
-    async fn stream_log(
-        &self,
-        message: &str,
-        ticket_id: &str,
-        msg_store: &Arc<MsgStore>,
-        normalizer: &LogNormalizer,
-    ) {
-        let entry = normalizer.normalize(message.to_string(), ticket_id.to_string());
-        msg_store.push(entry).await;
-    }
-
-    fn generate_analysis_result(&self, request: &CodeAnalysisRequest) -> String {
-        match request.code_context.as_str() {
-            "auth/login.js" => {
-                format!(
-                    r#"
-## 🔐 Phân tích Business Flow: Đăng nhập User
-
-### 1. Flow chính:
-1. **Input Validation**: Kiểm tra email/password format
-2. **Authentication**: Gọi API xác thực với backend
-3. **Session Management**: Tạo session và lưu token
-4. **Redirect**: Chuyển hướng đến dashboard
-
-### 2. Các điểm quan trọng cho QA:
-- **Validation Rules**: Email phải đúng format, password tối thiểu 8 ký tự
-- **Error Handling**: Xử lý lỗi network, invalid credentials
-- **Security**: Token được lưu trong httpOnly cookie
-- **Loading States**: Hiển thị spinner trong quá trình đăng nhập
-
-### 3. Test Cases cần kiểm tra:
-✅ Đăng nhập thành công với credentials hợp lệ
-✅ Đăng nhập thất bại với credentials sai
-✅ Xử lý lỗi network timeout
-✅ Validation input không hợp lệ
-✅ Remember me functionality
-✅ Session expiry handling
-
-### 4. Code Flow:
-```
-LoginForm → validateInput() → callAuthAPI() → saveSession() → redirect()
-```
-
-### 5. Các API Endpoints:
-- POST /api/auth/login
-- POST /api/auth/refresh-token
-- POST /api/auth/logout
-
-**Ticket ID**: {}
-"#,
-                    request.ticket_id
-                )
-            }
-            "api/payment.js" => {
-                format!(
-                    r#"
-## 💳 Phân tích Business Flow: Thanh toán
-
-### 1. Flow chính:
-1. **Payment Initiation**: Khởi tạo giao dịch thanh toán
-2. **Payment Gateway**: Kết nối với cổng thanh toán (Stripe/PayPal)
-3. **Transaction Processing**: Xử lý giao dịch
-4. **Confirmation**: Xác nhận kết quả thanh toán
-5. **Notification**: Gửi email/SMS xác nhận
-
-### 2. Các điểm quan trọng cho QA:
-- **Payment Methods**: Hỗ trợ credit card, bank transfer, e-wallet
-- **Security**: Mã hóa thông tin thẻ, PCI compliance
-- **Error Handling**: Xử lý lỗi thanh toán, timeout
-- **Audit Trail**: Log tất cả giao dịch
-- **Idempotency**: Đảm bảo không double charge
-
-### 3. Test Cases cần kiểm tra:
-✅ Thanh toán thành công với card hợp lệ
-✅ Thanh toán thất bại (insufficient funds)
-✅ Timeout payment gateway (retry logic)
-✅ Invalid payment method
-✅ Currency conversion (nếu có)
-✅ Refund process
-✅ Webhook handling cho payment confirmation
-
-### 4. Code Flow:
-```
-PaymentForm → validatePayment() → callGateway() →
-processTransaction() → confirmPayment() → sendNotification()
-```
-
-### 5. Error Scenarios:
-- Network timeout: Retry 3 lần với exponential backoff
-- Invalid card: Hiển thị thông báo rõ ràng
-- Gateway down: Fallback sang gateway dự phòng
-
-### 6. Security Considerations:
-- PCI DSS compliance
-- Tokenization của thông tin thẻ
-- 3D Secure authentication
-- Fraud detection integration
-
-**Ticket ID**: {}
-"#,
-                    request.ticket_id
-                )
-            }
-            _ => {
-                format!(
-                    r#"
-## 📊 Phân tích Business Flow
-
-### Context: {}
-### Câu hỏi: {}
-
-### Phân tích chi tiết:
-
-Tôi đã phân tích code trong context `{}` để hiểu business flow liên quan đến câu hỏi: "{}".
-
-#### **Business Flow chính:**
-
-1. **Input Processing**
-   - Validation và preprocessing dữ liệu đầu vào
-   - Kiểm tra quyền truy cập và authorization
-
-2. **Core Logic**
-   - Xử lý business logic chính
-   - Data transformation và calculations
-
-3. **Data Persistence**
-   - Lưu trữ dữ liệu vào database
-   - Cache management và optimization
-
-4. **Response & Error Handling**
-   - Format response cho client
-   - Xử lý errors và edge cases
-
-#### **Các điểm quan trọng:**
-- ⚠️ Kiểm tra input validation rules kỹ càng
-- 🔒 Xử lý authorization và permissions
-- ⚡ Performance considerations (N+1 queries, caching)
-- 🛡️ Security implications (injection attacks, XSS)
-
-#### **Test Cases đề xuất:**
-✅ Happy path scenarios với data hợp lệ
-✅ Error handling scenarios (invalid input, network errors)
-✅ Edge cases và boundary conditions
-✅ Performance testing với large datasets
-✅ Security testing (injection, authentication bypass)
-✅ Concurrent access scenarios
-
-#### **Recommendations:**
-1. Thêm comprehensive error logging
-2. Implement rate limiting nếu là API endpoint
-3. Add metrics và monitoring
-4. Review security implications
-
-**Ticket ID**: {}
-"#,
-                    request.code_context,
-                    request.question,
-                    request.code_context,
-                    request.question,
-                    request.ticket_id
-                )
+        
+        // Validate working directory and code_context path
+        let analysis_dir = working_directory.or(self.config.working_dir.clone());
+        if let Some(ref dir) = analysis_dir {
+            info!("📂 Analysis scope: {}", dir);
+            // Validate directory exists and is accessible
+            if let Err(e) = tokio::fs::metadata(dir).await {
+                error!("⚠️ Không thể access directory {}: {}", dir, e);
+                return Err(CursorAgentError::DirectoryNotAccessible(dir.clone()).into());
             }
         }
+
+        // Validate executable exists only for absolute paths
+        // For executables in PATH, let spawn() handle the error
+        if self.config.executable_path.contains('/') || self.config.executable_path.contains('\\') {
+            // It's an absolute path, check if exists
+            if let Err(_e) = tokio::fs::metadata(&self.config.executable_path).await {
+                error!("⚠️ Cursor Agent executable không tồn tại: {}", self.config.executable_path);
+                return Err(CursorAgentError::ExecutableNotFound(self.config.executable_path.clone()).into());
+            }
+        } else {
+            // For PATH executables, check if command exists using 'which'
+            debug!("Checking if '{}' exists in PATH", self.config.executable_path);
+            // Note: On Windows, this might need different handling
+            if std::cfg!(unix) {
+                if let Ok(output) = tokio::process::Command::new("which")
+                    .arg(&self.config.executable_path)
+                    .output()
+                    .await
+                {
+                    if !output.status.success() {
+                        error!("⚠️ Cursor Agent '{}' không tìm thấy trong PATH", self.config.executable_path);
+                        error!("💡 Hãy install Cursor CLI: curl https://cursor.com/install -fsS | bash");
+                        error!("💡 Hoặc set CURSOR_AGENT_PATH với absolute path đến executable");
+                        return Err(CursorAgentError::ExecutableNotFound(format!("'{}' not found in PATH", self.config.executable_path)).into());
+                    }
+                }
+            }
+        }
+
+        // Execute with retry logic
+        let mut last_error = None;
+        for attempt in 1..=self.config.max_retries {
+            info!("🔄 Attempt {}/{} for analysis", attempt, self.config.max_retries);
+            
+            match self.spawn_cursor_process(request, analysis_dir.clone(), msg_store, normalizer).await {
+                Ok(result) => {
+                    info!("✅ Analysis completed successfully on attempt {}", attempt);
+                    return Ok(result);
+                }
+                Err(e) => {
+                    warn!("❌ Attempt {} failed: {}", attempt, e);
+                    last_error = Some(e);
+                    
+                    if attempt < self.config.max_retries {
+                        info!("⏳ Waiting before retry...");
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("All retry attempts failed")))
     }
 
-    // This method would be used for real Cursor Agent integration
-    #[allow(dead_code)]
-    async fn execute_real_cursor_agent(
+
+    async fn spawn_cursor_process(
         &self,
         request: &CodeAnalysisRequest,
+        working_directory: Option<String>,
         msg_store: &Arc<MsgStore>,
         _normalizer: &LogNormalizer,
     ) -> Result<String> {
         let prompt = self.create_analysis_prompt(request);
-
-        // Spawn Cursor Agent process
-        let mut child = Command::new("cursor-agent")
-            .arg("--prompt")
-            .arg(&prompt)
-            .arg("--context")
-            .arg(&request.code_context)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
-
         let ticket_id = request.ticket_id.clone();
+
+        info!("🚀 Spawning Cursor Agent process: {}", self.config.executable_path);
+        debug!("Prompt: {}", prompt);
+
+        // Build command with proper Cursor CLI arguments according to documentation
+        // Reference: https://cursor.com/docs/cli/headless
+        let mut cmd = Command::new(&self.config.executable_path);
+        
+        // Print mode for non-interactive scripting (use either -p OR --print, not both)
+        cmd.arg("-p");
+        
+        // Add output format
+        match self.config.output_format {
+            OutputFormat::Text => {
+                // Default text format, no additional flag needed
+            }
+            OutputFormat::Json => {
+                cmd.arg("--output-format").arg("json");
+            }
+            OutputFormat::StreamJson => {
+                cmd.arg("--output-format").arg("stream-json");
+            }
+            OutputFormat::StreamPartialOutput => {
+                cmd.arg("--output-format").arg("stream-json");
+                cmd.arg("--stream-partial-output");
+            }
+        }
+        
+        // Set working directory using Rust's Command::current_dir()
+        // Cursor CLI will execute in the specified directory context
+        if let Some(ref dir) = working_directory {
+            cmd.current_dir(dir);
+        }
+        
+        // Add the actual prompt/command as the final argument
+        cmd.arg(&prompt);
+
+        // Set API key if available
+        if let Some(ref api_key) = self.config.api_key {
+            cmd.env("CURSOR_API_KEY", api_key);
+        }
+
+        cmd.stdin(std::process::Stdio::piped());  // Key fix: pipe stdin to close it later
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        // Spawn the process
+        let mut child = cmd.spawn()
+            .map_err(|e| CursorAgentError::SpawnFailed(e.to_string()))?;
+
+        // Close stdin immediately to signal EOF
+        // This forces Cursor Agent to exit after processing instead of waiting for more input
+        let _stdin = child.stdin.take();
+        drop(_stdin);
+        info!("🔒 Closed stdin to signal EOF to Cursor Agent");
+
+        let stdout = child.stdout.take().ok_or_else(|| 
+            CursorAgentError::SpawnFailed("Failed to get stdout pipe".to_string()))?;
+        let stderr = child.stderr.take().ok_or_else(|| 
+            CursorAgentError::SpawnFailed("Failed to get stderr pipe".to_string()))?;
+
+        // Clone for async tasks
         let msg_store_clone = msg_store.clone();
-        let normalizer_clone = LogNormalizer::new();
+        let ticket_id_clone = ticket_id.clone();
 
         // Spawn task to capture stdout
         let stdout_handle = tokio::spawn(async move {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
+            let mut output_lines = Vec::new();
+            let normalizer = LogNormalizer::new();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                let entry = normalizer_clone.normalize(line, ticket_id.clone());
+                info!("📤 STDOUT: {}", line);
+                output_lines.push(line.clone());
+                
+                let entry = normalizer.normalize(line, ticket_id_clone.clone());
                 msg_store_clone.push(entry).await;
             }
+
+            info!("📤 Finished reading stdout, total lines: {}", output_lines.len());
+
+            output_lines
         });
 
         // Spawn task to capture stderr
         let stderr_ticket_id = request.ticket_id.clone();
         let stderr_msg_store = msg_store.clone();
-        let stderr_normalizer = LogNormalizer::new();
 
         let stderr_handle = tokio::spawn(async move {
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
+            let stderr_normalizer = LogNormalizer::new();
 
             while let Ok(Some(line)) = lines.next_line().await {
+                info!("⚠️ STDERR: {}", line);
                 let error_line = format!("ERROR: {}", line);
                 let entry = stderr_normalizer.normalize(error_line, stderr_ticket_id.clone());
                 stderr_msg_store.push(entry).await;
             }
+
+            info!("⚠️ Finished reading stderr");
         });
 
-        // Wait for process to complete
-        let status = child.wait().await?;
+        // Wait for process to complete with timeout
+        let timeout_duration = Duration::from_secs(self.config.timeout_seconds);
+        info!("⏳ Waiting for Cursor Agent process to complete (timeout: {}s)...", self.config.timeout_seconds);
+        
+        let process_result = timeout(timeout_duration, child.wait()).await;
 
-        // Wait for log capture to complete
-        let _ = tokio::join!(stdout_handle, stderr_handle);
+        match process_result {
+            Ok(Ok(status)) => {
+                info!("✅ Cursor Agent process completed with exit code: {}", status.code().unwrap_or(-1));
+                
+                // Wait for log capture to complete
+                let (stdout_result, _) = tokio::join!(stdout_handle, stderr_handle);
+                
+                let output_lines = stdout_result.map_err(|e| 
+                    CursorAgentError::SpawnFailed(format!("Stdout task failed: {}", e)))?;
+                
+                if !status.success() {
+                    return Err(CursorAgentError::ProcessFailed(status.code().unwrap_or(-1)).into());
+                }
 
-        if !status.success() {
-            return Err(anyhow::anyhow!("Cursor Agent process failed"));
+                if output_lines.is_empty() {
+                    warn!("⚠️ Cursor Agent produced no output");
+                    return Ok("Analysis completed but no output generated".to_string());
+                }
+
+                Ok(output_lines.join("\n"))
+            }
+            Ok(Err(e)) => {
+                error!("❌ Process wait failed: {}", e);
+                // Cleanup tasks
+                stdout_handle.abort();
+                stderr_handle.abort();
+                Err(CursorAgentError::SpawnFailed(e.to_string()).into())
+            }
+            Err(_) => {
+                error!("⏰ Process timeout after {} seconds", self.config.timeout_seconds);
+                
+                // Kill the process
+                if let Err(e) = child.kill().await {
+                    error!("Failed to kill timeout process: {}", e);
+                }
+                
+                // Cleanup tasks
+                stdout_handle.abort();
+                stderr_handle.abort();
+                
+                Err(CursorAgentError::Timeout(self.config.timeout_seconds).into())
+            }
         }
-
-        Ok("Analysis completed".to_string())
     }
 
     fn create_analysis_prompt(&self, request: &CodeAnalysisRequest) -> String {
-        format!(
-            r#"
-Bạn là một AI assistant chuyên phân tích source code để giúp QA hiểu business flow.
-
-CONTEXT:
-- File/Module: {}
-- Câu hỏi của QA: {}
-
-YÊU CẦU:
-1. Phân tích code trong context trên
-2. Giải thích business flow một cách dễ hiểu
-3. Chỉ ra các điểm quan trọng QA cần chú ý
-4. Đưa ra ví dụ cụ thể nếu có thể
-5. Đề xuất test cases cần kiểm tra
-6. Trả lời bằng tiếng Việt
-
-Hãy trả lời chi tiết và hữu ích cho QA.
-"#,
-            request.code_context, request.question
-        )
+        // Create prompt that works with Cursor CLI
+        // The prompt should be a natural language instruction
+        if request.code_context.is_empty() {
+            format!(
+                "Phân tích code để giúp QA hiểu business flow. Câu hỏi: {}",
+                request.question
+            )
+        } else {
+            format!(
+                "Analyze the code in {} to help QA understand the business flow. Question: {}",
+                request.code_context, request.question
+            )
+        }
     }
 }

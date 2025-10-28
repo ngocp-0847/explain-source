@@ -211,6 +211,22 @@ impl LogNormalizer {
                     }
                 }
             }
+
+            LogMessageType::Result => {
+                // Extract completion status and duration
+                let completion_pattern = Regex::new(r"(?:completed|finished|done|success)").unwrap();
+                if completion_pattern.is_match(log) {
+                    metadata.insert("status".to_string(), "completed".to_string());
+                }
+
+                // Extract duration/time information for completion
+                let duration_pattern = Regex::new(r"(\d+(?:\.\d+)?)\s*(ms|seconds?|minutes?|s|m)").unwrap();
+                if let Some(caps) = duration_pattern.captures(log) {
+                    if let Some(duration) = caps.get(0) {
+                        metadata.insert("duration".to_string(), duration.as_str().to_string());
+                    }
+                }
+            }
         }
 
         // Common metadata: extract timestamps if present in log

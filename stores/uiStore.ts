@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Ticket } from '@/types/ticket'
+import { Ticket, Project } from '@/types/ticket'
 
 interface UIStore {
   isTicketModalOpen: boolean
@@ -7,6 +7,8 @@ interface UIStore {
   isDetailModalOpen: boolean
   selectedTicketIdForDetail: string | null
   draggedTicket: Ticket | null
+  isProjectSettingsOpen: boolean
+  selectedProjectForEdit: Project | null
   
   openTicketModal: () => void
   closeTicketModal: () => void
@@ -16,6 +18,9 @@ interface UIStore {
   closeDetailModal: () => void
   
   setDraggedTicket: (ticket: Ticket | null) => void
+  
+  openProjectSettings: (project: Project) => void
+  closeProjectSettings: () => void
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -24,6 +29,8 @@ export const useUIStore = create<UIStore>((set) => ({
   isDetailModalOpen: false,
   selectedTicketIdForDetail: null,
   draggedTicket: null,
+  isProjectSettingsOpen: false,
+  selectedProjectForEdit: null,
 
   openTicketModal: () => set({ isTicketModalOpen: true }),
   closeTicketModal: () => set({ isTicketModalOpen: false, selectedTicketForEdit: null }),
@@ -43,5 +50,16 @@ export const useUIStore = create<UIStore>((set) => ({
     }),
 
   setDraggedTicket: (ticket) => set({ draggedTicket: ticket }),
+
+  openProjectSettings: (project) =>
+    set({
+      isProjectSettingsOpen: true,
+      selectedProjectForEdit: project,
+    }),
+  closeProjectSettings: () =>
+    set({
+      isProjectSettingsOpen: false,
+      selectedProjectForEdit: null,
+    }),
 }))
 

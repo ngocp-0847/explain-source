@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { DndContext, DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { KanbanBoard } from '@/components/KanbanBoard'
@@ -11,15 +11,21 @@ import { useTicketStore } from '@/stores/ticketStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { useUIStore } from '@/stores/uiStore'
-import { Ticket, TicketStatus, StructuredLogMessage, CodeAnalysisCompleteMessage, CodeAnalysisErrorMessage, isValidLogMessageType } from '@/types/ticket'
+import { Ticket, TicketStatus, StructuredLogMessage, CodeAnalysisCompleteMessage, CodeAnalysisErrorMessage, isValidLogMessageType, RawStructuredLog } from '@/types/ticket'
+import { projectApi, ticketApi } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Settings2 } from 'lucide-react'
+import { ProjectFormDialog } from '@/components/ProjectFormDialog'
 
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
   const projectId = params.projectId as string
+
+  // Loading state for projects
+  const [isLoading, setIsLoading] = useState(true)
+  const [projectNotFound, setProjectNotFound] = useState(false)
 
   const tickets = useTicketStore(state => state.tickets)
   const setTickets = useTicketStore(state => state.setTickets)
@@ -41,41 +47,87 @@ export default function ProjectDetailPage() {
   const openDetailModal = useUIStore(state => state.openDetailModal)
   const closeDetailModal = useUIStore(state => state.closeDetailModal)
   const isDetailModalOpen = useUIStore(state => state.isDetailModalOpen)
-  const selectedTicketForDetail = useUIStore(state => state.selectedTicketForDetail)
+  const selectedTicketIdForDetail = useUIStore(state => state.selectedTicketIdForDetail)
   const setDraggedTicket = useUIStore(state => state.setDraggedTicket)
   const draggedTicket = useUIStore(state => state.draggedTicket)
+  const isProjectSettingsOpen = useUIStore(state => state.isProjectSettingsOpen)
+  const openProjectSettings = useUIStore(state => state.openProjectSettings)
+  const closeProjectSettings = useUIStore(state => state.closeProjectSettings)
 
   const { isConnected, subscribe, connect, send } = useWebSocketStore()
 
-  // Select project on mount
+  // Load project detail from API
   useEffect(() => {
-    selectProject(projectId)
-  }, [projectId, selectProject])
-
-  // Load tickets from backend on mount
-  useEffect(() => {
-    if (isConnected) {
-      send({ type: 'load-tickets', projectId })
+    const loadProject = async () => {
+      try {
+        const data = await projectApi.get(projectId)
+        // Map API response to frontend format
+        const mappedProject = {
+          ...data,
+          directoryPath: data.directory_path,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        }
+        useProjectStore.getState().addProject(mappedProject)
+        useProjectStore.getState().selectProject(projectId)
+        setIsLoading(false)
+      } catch (error) {
+        console.error('Failed to load project:', error)
+        setProjectNotFound(true)
+        setIsLoading(false)
+      }
     }
-  }, [isConnected, projectId, send])
+    loadProject()
+  }, [projectId])
 
-  // Connect WebSocket
+  // Load tickets from API
+  useEffect(() => {
+    const loadTickets = async () => {
+      try {
+        const data = await ticketApi.list(projectId)
+        setTickets(data.map((t: any) => ({
+          ...t,
+          createdAt: new Date(t.created_at),
+          updatedAt: t.updated_at ? new Date(t.updated_at) : undefined,
+          logs: [], // Khởi tạo empty array
+        })))
+      } catch (error) {
+        console.error('Failed to load tickets:', error)
+      }
+    }
+    if (!isLoading) {
+      loadTickets()
+    }
+  }, [projectId, isLoading, setTickets])
+
+  // Connect WebSocket (only for real-time logs)
   useEffect(() => {
     connect('ws://localhost:9000/ws')
 
-    // Subscribe to WebSocket messages
+    // Subscribe to WebSocket messages (only for analysis logs)
     const unsubscribe = subscribe((data) => {
       switch (data.message_type) {
         case 'structured-log':
           const logMessage = data as StructuredLogMessage
-          const log = logMessage.log
+          const rawLog: RawStructuredLog = logMessage.log
           
-          if (!isValidLogMessageType(log.messageType)) {
-            console.warn(`Invalid messageType received: ${log.messageType}, falling back to 'system'`)
-            log.messageType = 'system'
+          // Transform snake_case fields to camelCase
+          const transformedLog = {
+            id: rawLog.id,
+            ticketId: rawLog.ticket_id,
+            messageType: rawLog.message_type,
+            content: rawLog.content,
+            rawLog: rawLog.raw_log,
+            metadata: rawLog.metadata,
+            timestamp: rawLog.timestamp,
           }
           
-          addTicketLog(log.ticketId || log.ticket_id, log)
+          if (!isValidLogMessageType(transformedLog.messageType)) {
+            console.warn(`Invalid messageType received: ${transformedLog.messageType}, falling back to 'system'`)
+            transformedLog.messageType = 'system'
+          }
+          
+          addTicketLog(transformedLog.ticketId, transformedLog)
           break
 
         case 'code-analysis-complete':
@@ -87,49 +139,11 @@ export default function ProjectDetailPage() {
           const errorMsg = data as CodeAnalysisErrorMessage
           setTicketAnalyzing(errorMsg.ticket_id, false)
           break
-
-        case 'tickets-loaded':
-          try {
-            const loadedTickets = JSON.parse(data.content)
-            if (Array.isArray(loadedTickets)) {
-              // Filter tickets for this project
-              const projectTickets = loadedTickets.filter((t: any) => t.project_id === projectId)
-              setTickets(projectTickets.map((t: any) => ({
-                ...t,
-                createdAt: new Date(t.created_at),
-                updatedAt: t.updated_at ? new Date(t.updated_at) : undefined,
-              })))
-              console.log('✅ Loaded', projectTickets.length, 'tickets for project')
-            }
-          } catch (e) {
-            console.error('Failed to parse tickets:', e)
-          }
-          break
-
-        case 'project-created':
-          try {
-            const newProject = JSON.parse(data.content)
-            useProjectStore.getState().addProject(newProject)
-          } catch (e) {
-            console.error('Failed to parse project:', e)
-          }
-          break
-
-        case 'projects-loaded':
-          try {
-            const loadedProjects = JSON.parse(data.content)
-            if (Array.isArray(loadedProjects)) {
-              useProjectStore.getState().setProjects(loadedProjects)
-            }
-          } catch (e) {
-            console.error('Failed to parse projects:', e)
-          }
-          break
       }
     })
 
     return unsubscribe
-  }, [connect, subscribe, addTicketLog, setAnalysisResult, setTicketAnalyzing, setTickets, send, projectId])
+  }, [connect, subscribe, addTicketLog, setAnalysisResult, setTicketAnalyzing])
 
   const handleDragStart = (event: DragStartEvent) => {
     const ticket = tickets.find((t) => t.id === event.active.id)
@@ -173,7 +187,38 @@ export default function ProjectDetailPage() {
     startAnalysis(ticketId, send)
   }
 
-  if (!selectedProject) {
+  const handleOpenSettings = () => {
+    if (selectedProject) {
+      openProjectSettings(selectedProject)
+    }
+  }
+
+  // Add timeout fallback
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false)
+        setProjectNotFound(true)
+      }
+    }, 5000)
+    
+    return () => clearTimeout(timeout)
+  }, [isLoading])
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <h1 className="text-xl font-semibold text-gray-900">Đang tải project...</h1>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error if project not found
+  if (projectNotFound || !selectedProject) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -212,6 +257,10 @@ export default function ProjectDetailPage() {
               >
                 {isConnected ? '✅ Đã kết nối' : '❌ Mất kết nối'}
               </Badge>
+              <Button variant="outline" onClick={handleOpenSettings}>
+                <Settings2 className="w-4 h-4 mr-2" />
+                Settings
+              </Button>
               <Button onClick={openTicketModal}>
                 Tạo Ticket Mới
               </Button>
@@ -221,19 +270,6 @@ export default function ProjectDetailPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-4 p-4 bg-white rounded-lg shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-gray-900">Directory Path</h3>
-              <p className="text-sm text-gray-600 font-mono">{selectedProject.directoryPath}</p>
-            </div>
-            <Button variant="outline" size="sm">
-              <Settings2 className="w-4 h-4 mr-2" />
-              Settings
-            </Button>
-          </div>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -258,6 +294,11 @@ export default function ProjectDetailPage() {
 
       <TicketFormDialog />
       <TicketDetailDialog onStartAnalysis={handleStartAnalysis} />
+      <ProjectFormDialog 
+        isOpen={isProjectSettingsOpen}
+        onClose={closeProjectSettings}
+        project={selectedProject}
+      />
     </div>
   )
 }

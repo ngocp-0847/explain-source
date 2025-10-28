@@ -4,12 +4,68 @@ import { useEffect, useRef, useState } from 'react'
 import { StructuredLog, LogMessageType } from '@/types/ticket'
 import { Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 
+// Utility function để parse content JSON và extract type
+function parseLogContent(content: string): { 
+  parsedContent: any | null, 
+  contentType: string | null,
+  isJson: boolean 
+} {
+  try {
+    const parsed = JSON.parse(content)
+    return {
+      parsedContent: parsed,
+      contentType: parsed?.type || null,
+      isJson: true
+    }
+  } catch {
+    return {
+      parsedContent: null,
+      contentType: null,
+      isJson: false
+    }
+  }
+}
+
+// Function để tạo summary text từ parsed content
+function createLogSummary(content: string, parsedContent: any | null, contentType: string | null): string {
+  if (!parsedContent || !contentType) {
+    return content.length > 100 ? content.substring(0, 100) + '...' : content
+  }
+
+  switch (contentType) {
+    case 'tool_call':
+      const toolName = parsedContent.tool_call?.updateTodosToolCall ? 'updateTodos' : 
+                      parsedContent.tool_call ? Object.keys(parsedContent.tool_call)[0] : 'unknown'
+      const subtype = parsedContent.subtype || 'unknown'
+      return `🔧 Tool Call: ${toolName} (${subtype})`
+    
+    case 'assistant':
+      return `💬 Assistant: ${parsedContent.content?.substring(0, 50) || 'Message'}...`
+    
+    case 'error':
+      return `❌ Error: ${parsedContent.message || parsedContent.error || 'Unknown error'}`
+    
+    default:
+      return content.length > 100 ? content.substring(0, 100) + '...' : content
+  }
+}
+
+// Simple JSON syntax highlighter
+function highlightJson(jsonString: string): string {
+  return jsonString
+    .replace(/"([^"]+)":/g, '<span class="json-key">"$1":</span>')
+    .replace(/: "([^"]+)"/g, ': <span class="json-string">"$1"</span>')
+    .replace(/: (\d+)/g, ': <span class="json-number">$1</span>')
+    .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
+    .replace(/: null/g, ': <span class="json-null">null</span>')
+}
+
 interface LogViewerProps {
   logs: StructuredLog[]
   isAnalyzing: boolean
 }
 
-export function LogViewer({ logs, isAnalyzing }: LogViewerProps) {
+export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
 
@@ -74,15 +130,28 @@ export function LogViewer({ logs, isAnalyzing }: LogViewerProps) {
 
 function LogEntry({ log }: { log: StructuredLog }) {
   const [expanded, setExpanded] = useState(false)
+  const [jsonExpanded, setJsonExpanded] = useState(false)
 
-  const config = getLogConfig(log.messageType)
+  // Parse content để lấy type và summary
+  const { parsedContent, contentType, isJson } = parseLogContent(log.content)
+  const summary = createLogSummary(log.content, parsedContent, contentType)
+  
+  // Sử dụng contentType thay vì messageType để determine config
+  const config = getLogConfig(contentType || log.messageType)
 
   const hasMetadata = log.metadata && Object.keys(log.metadata).length > 0
 
+  // Special styling for completion result
+  const isCompletionResult = contentType === 'result' || log.messageType === 'result'
+  
   return (
-    <div className={`${config.bgColor} border-l-4 ${config.borderColor} p-3 rounded-r transition-all`}>
+    <div className={`${config.bgColor} border-l-4 ${config.borderColor} p-3 rounded-r transition-all ${
+      isCompletionResult ? 'animate-pulse border-l-8 shadow-lg' : ''
+    }`}>
       <div className="flex items-start gap-2">
-        <span className="text-lg flex-shrink-0">{config.icon}</span>
+        <span className={`text-lg flex-shrink-0 ${isCompletionResult ? 'animate-bounce' : ''}`}>
+          {config.icon}
+        </span>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -98,8 +167,49 @@ function LogEntry({ log }: { log: StructuredLog }) {
             </span>
           </div>
 
-          <div className="text-white break-words">{log.content}</div>
+          {/* Plain text summary */}
+          <div className={`text-white break-words mb-2 ${isCompletionResult ? 'font-bold text-lg' : ''}`}>
+            {summary}
+          </div>
+          
+          {/* Special completion message */}
+          {isCompletionResult && (
+            <div className="mt-2 p-2 bg-emerald-800/20 rounded border border-emerald-500/30">
+              <div className="text-emerald-300 text-sm font-medium">
+                🎉 Phân tích đã hoàn tất thành công! Kết quả đã được lưu.
+              </div>
+            </div>
+          )}
 
+          {/* JSON Details Toggle */}
+          {isJson && (
+            <div className="mt-2">
+              <button
+                onClick={() => setJsonExpanded(!jsonExpanded)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
+              >
+                {jsonExpanded ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )}
+                View JSON Details
+              </button>
+
+              {jsonExpanded && (
+                <div className="mt-2 text-xs text-gray-400 bg-gray-950 p-3 rounded">
+                  <pre 
+                    className="whitespace-pre-wrap break-all json-highlight"
+                    dangerouslySetInnerHTML={{
+                      __html: highlightJson(JSON.stringify(parsedContent, null, 2))
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Metadata Section */}
           {hasMetadata && (
             <div className="mt-2">
               <button
@@ -124,6 +234,7 @@ function LogEntry({ log }: { log: StructuredLog }) {
             </div>
           )}
 
+          {/* Raw Log Section */}
           {log.rawLog && expanded && (
             <details className="mt-2 text-xs">
               <summary className="text-gray-400 cursor-pointer hover:text-gray-200">
@@ -140,8 +251,9 @@ function LogEntry({ log }: { log: StructuredLog }) {
   )
 }
 
-function getLogConfig(messageType: LogMessageType) {
+function getLogConfig(messageType: string | LogMessageType) {
   switch (messageType) {
+    case 'tool_call':
     case 'tool_use':
       return {
         icon: '🔧',
@@ -166,19 +278,20 @@ function getLogConfig(messageType: LogMessageType) {
         borderColor: 'border-red-500',
         textColor: 'text-red-400',
       }
-    case 'system':
+    case 'result':
       return {
-        icon: 'ℹ️',
-        label: 'SYSTEM',
-        bgColor: 'bg-gray-800/30',
-        borderColor: 'border-gray-500',
-        textColor: 'text-gray-400',
+        icon: '✅',
+        label: 'COMPLETED',
+        bgColor: 'bg-emerald-900/30',
+        borderColor: 'border-emerald-500',
+        textColor: 'text-emerald-400',
       }
+    case 'system':
     default:
       // Fallback cho messageType không hợp lệ
       return {
         icon: 'ℹ️',
-        label: 'UNKNOWN',
+        label: 'SYSTEM',
         bgColor: 'bg-gray-800/30',
         borderColor: 'border-gray-500',
         textColor: 'text-gray-400',

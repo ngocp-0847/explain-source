@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Ticket } from '@/types/ticket'
 import { X, CodeIcon, Play, FileText } from 'lucide-react'
 import { LogViewer } from './LogViewer'
@@ -22,7 +23,15 @@ export function TicketDetailDialog({ onStartAnalysis }: TicketDetailDialogProps)
   
   // Get live ticket data from ticketStore
   const tickets = useTicketStore(state => state.tickets)
+  const loadTicketLogs = useTicketStore(state => state.loadTicketLogs)
   const ticket = tickets.find(t => t.id === selectedTicketId)
+
+  // Load logs when dialog opens
+  useEffect(() => {
+    if (isOpen && selectedTicketId) {
+      loadTicketLogs(selectedTicketId)
+    }
+  }, [isOpen, selectedTicketId, loadTicketLogs])
 
   if (!ticket || !isOpen) return null
 

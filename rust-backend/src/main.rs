@@ -1,7 +1,7 @@
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
     response::Response,
-    routing::get,
+    routing::{get, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+mod api_handlers;
 mod cursor_agent;
 mod database;
 mod log_normalizer;
@@ -147,6 +148,11 @@ async fn main() {
     let app = Router::new()
         .route("/", get(health_check))
         .route("/ws", get(websocket_handler))
+        .route("/api/projects", get(api_handlers::list_projects).post(api_handlers::create_project))
+        .route("/api/projects/:id", get(api_handlers::get_project).put(api_handlers::update_project).delete(api_handlers::delete_project))
+        .route("/api/projects/:project_id/tickets", get(api_handlers::list_tickets).post(api_handlers::create_ticket))
+        .route("/api/tickets/:id/status", put(api_handlers::update_ticket_status))
+        .route("/api/tickets/:id/logs", get(api_handlers::get_ticket_logs))
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 
