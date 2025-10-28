@@ -128,6 +128,11 @@ export default function ProjectDetailPage() {
           }
           
           addTicketLog(transformedLog.ticketId, transformedLog)
+          
+          // Stop analyzing when result log is received
+          if (transformedLog.messageType === 'result') {
+            setTicketAnalyzing(transformedLog.ticketId, false)
+          }
           break
 
         case 'code-analysis-complete':

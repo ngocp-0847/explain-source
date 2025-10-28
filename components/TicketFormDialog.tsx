@@ -13,7 +13,8 @@ import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { ticketFormSchema, TicketFormValues } from '@/schemas/ticketSchema'
-import { Ticket } from '@/types/ticket'
+import { Ticket, TicketStatus } from '@/types/ticket'
+import { ticketApi } from '@/lib/api'
 
 export function TicketFormDialog() {
   const { isOpen, onClose, selectedTicket, setSelectedTicket } = useUIStore(state => ({
@@ -53,7 +54,7 @@ export function TicketFormDialog() {
     }
   }, [selectedTicket, form])
 
-  const onSubmit = (data: TicketFormValues) => {
+  const onSubmit = async (data: TicketFormValues) => {
     if (selectedTicket) {
       // Edit mode - update existing ticket
       updateTicket(selectedTicket.id, {
@@ -71,35 +72,42 @@ export function TicketFormDialog() {
         codeContext: data.codeContext || undefined,
       })
     } else {
-      // Create mode - add new ticket
+      // Create mode - add new ticket via REST API
       if (!selectedProjectId) {
         alert('Vui lòng chọn project trước khi tạo ticket')
         return
       }
       
-      const newTicket: Ticket = {
-        id: crypto.randomUUID(),
-        projectId: selectedProjectId,
-        title: data.title,
-        description: data.description,
-        status: 'todo',
-        createdAt: new Date(),
-        codeContext: data.codeContext || undefined,
-        isAnalyzing: false,
-        logs: [],
+      try {
+        // Call REST API to create ticket
+        const createdTicket = await ticketApi.create(selectedProjectId, {
+          title: data.title,
+          description: data.description,
+          status: 'todo',
+          code_context: data.codeContext || undefined,
+        })
+        
+        // Add to local store with proper mapping
+        addTicket({
+          id: createdTicket.id,
+          projectId: createdTicket.project_id,
+          title: createdTicket.title,
+          description: createdTicket.description,
+          status: createdTicket.status as TicketStatus,
+          createdAt: new Date(createdTicket.created_at),
+          updatedAt: createdTicket.updated_at ? new Date(createdTicket.updated_at) : undefined,
+          codeContext: createdTicket.code_context || undefined,
+          analysisResult: createdTicket.analysis_result || undefined,
+          isAnalyzing: createdTicket.is_analyzing,
+          logs: [], // Initialize empty logs array
+        })
+        
+        console.log('✅ Ticket created successfully via REST API:', createdTicket.id)
+      } catch (error) {
+        console.error('❌ Failed to create ticket:', error)
+        alert('Lỗi khi tạo ticket. Vui lòng thử lại.')
+        return
       }
-      addTicket(newTicket)
-      
-      // CRITICAL: Sync to backend immediately
-      send({
-        type: 'create-ticket',
-        id: newTicket.id,
-        projectId: selectedProjectId,
-        title: data.title,
-        description: data.description,
-        status: 'todo',
-        codeContext: data.codeContext || undefined,
-      })
     }
 
     onClose()

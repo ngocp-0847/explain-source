@@ -33,7 +33,10 @@ function mergeAssistantLogs(logs: StructuredLog[]): string {
   const assistantLogs = logs
     .filter(log => {
       const { contentType } = parseLogContent(log.content)
-      return log.messageType === 'assistant' || contentType === 'assistant'
+      return log.messageType === 'assistant' || 
+             log.messageType === 'result' ||  // Include result logs
+             contentType === 'assistant' ||
+             contentType === 'result'         // Include result content type
     })
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
@@ -52,12 +55,18 @@ function mergeAssistantLogs(logs: StructuredLog[]): string {
       if (textParts.trim()) {
         markdownParts.push(textParts)
       }
+    } else if (parsedContent?.result && typeof parsedContent.result === 'string') {
+      // Handle result field from completion messages
+      markdownParts.push(parsedContent.result)
     } else if (parsedContent?.message) {
       // Fallback cho structure khác
       markdownParts.push(parsedContent.message)
     } else if (typeof parsedContent === 'string') {
       // Plain text content
       markdownParts.push(parsedContent)
+    } else if (typeof log.content === 'string' && !parsedContent) {
+      // If parsing failed, use raw content
+      markdownParts.push(log.content)
     }
   }
 
