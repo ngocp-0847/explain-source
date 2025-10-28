@@ -10,7 +10,7 @@ interface TicketStore {
   setTicketAnalyzing: (id: string, isAnalyzing: boolean) => void
   addTicketLog: (ticketId: string, log: StructuredLog) => void
   setAnalysisResult: (ticketId: string, result: string) => void
-  startAnalysis: (ticketId: string) => void
+  startAnalysis: (ticketId: string, sendMessage: (message: any) => void) => void
 }
 
 export const useTicketStore = create<TicketStore>((set, get) => ({
@@ -47,7 +47,7 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   addTicketLog: (ticketId, log) =>
     set((state) => ({
       tickets: state.tickets.map((ticket) =>
-        ticket.id === ticketId || ticket.id === log.ticketId || ticket.id === log.ticket_id
+        ticket.id === ticketId || ticket.id === log.ticketId
           ? { ...ticket, logs: [...ticket.logs, log] }
           : ticket
       ),
@@ -81,10 +81,11 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
       ticketId,
       codeContext: ticket.codeContext || '',
       question: ticket.description,
+      projectId: ticket.projectId,
     }
 
     sendMessage(message)
-    console.log('🚀 Starting analysis for ticket:', ticketId)
+    console.log('🚀 Starting analysis for ticket:', ticketId, 'in project:', ticket.projectId)
   },
 }))
 

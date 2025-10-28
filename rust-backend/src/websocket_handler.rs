@@ -103,6 +103,10 @@ async fn handle_client_message(
                     .unwrap_or("")
                     .to_string(),
                 question: message["question"].as_str().unwrap_or("").to_string(),
+                project_id: message["projectId"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string(),
             };
 
             info!(
@@ -173,10 +177,18 @@ async fn handle_client_message(
         }
 
         "load-tickets" => {
-            info!("📂 Client {} yêu cầu tải danh sách tickets", client_id);
+            let project_id = message["projectId"].as_str();
+            
+            info!("📂 Client {} yêu cầu tải danh sách tickets cho project {:?}", client_id, project_id);
 
             // Load tickets from database
-            match state.database.list_tickets().await {
+            let result = if let Some(pid) = project_id {
+                state.database.list_tickets_by_project(pid).await
+            } else {
+                state.database.list_tickets().await
+            };
+
+            match result {
                 Ok(tickets) => {
                     info!("✅ Tải được {} tickets từ database", tickets.len());
                     
@@ -195,6 +207,122 @@ async fn handle_client_message(
             }
         }
 
+        "create-project" => {
+            info!("➕ Client {} tạo project mới", client_id);
+
+            let project_id = message["id"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+            let project = crate::database::ProjectRecord {
+                id: project_id.clone(),
+                name: message["name"].as_str().unwrap_or("").to_string(),
+                description: message["description"].as_str().map(|s| s.to_string()),
+                directory_path: message["directoryPath"].as_str().unwrap_or("").to_string(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            };
+
+            match state.database.create_project(&project).await {
+                Ok(_) => {
+                    info!("✅ Tạo project thành công: {}", project.id);
+                    
+                    // Broadcast project created event
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: "system".to_string(),
+                        message_type: "project-created".to_string(),
+                        content: serde_json::to_string(&project).unwrap_or_default(),
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Err(e) => error!("❌ Lỗi tạo project: {}", e),
+            }
+        }
+
+        "load-projects" => {
+            info!("📂 Client {} yêu cầu tải danh sách projects", client_id);
+
+            match state.database.list_projects().await {
+                Ok(projects) => {
+                    info!("✅ Tải được {} projects từ database", projects.len());
+                    
+                    let projects_json = serde_json::to_string(&projects).unwrap_or_default();
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: "system".to_string(),
+                        message_type: "projects-loaded".to_string(),
+                        content: projects_json,
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Err(e) => error!("❌ Lỗi tải projects: {}", e),
+            }
+        }
+
+        "load-project-detail" => {
+            let project_id = message["projectId"].as_str().unwrap_or("");
+            info!("📋 Client {} yêu cầu chi tiết project {}", client_id, project_id);
+
+            match state.database.get_project(project_id).await {
+                Ok(Some(project)) => {
+                    let project_json = serde_json::to_string(&project).unwrap_or_default();
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: "system".to_string(),
+                        message_type: "project-detail-loaded".to_string(),
+                        content: project_json,
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Ok(None) => error!("❌ Không tìm thấy project {}", project_id),
+                Err(e) => error!("❌ Lỗi tải project: {}", e),
+            }
+        }
+
+        "update-project" => {
+            let project_id = message["id"].as_str().unwrap_or("");
+            info!("🔄 Client {} cập nhật project {}", client_id, project_id);
+
+            let project = crate::database::ProjectRecord {
+                id: project_id.to_string(),
+                name: message["name"].as_str().unwrap_or("").to_string(),
+                description: message["description"].as_str().map(|s| s.to_string()),
+                directory_path: message["directoryPath"].as_str().unwrap_or("").to_string(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            };
+
+            match state.database.update_project(&project).await {
+                Ok(_) => {
+                    info!("✅ Đã cập nhật project {}", project_id);
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: "system".to_string(),
+                        message_type: "project-updated".to_string(),
+                        content: serde_json::to_string(&project).unwrap_or_default(),
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Err(e) => error!("❌ Lỗi cập nhật project: {}", e),
+            }
+        }
+
+        "delete-project" => {
+            let project_id = message["projectId"].as_str().unwrap_or("");
+            info!("🗑️ Client {} xóa project {}", client_id, project_id);
+
+            match state.database.delete_project(project_id).await {
+                Ok(_) => {
+                    info!("✅ Đã xóa project {}", project_id);
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: "system".to_string(),
+                        message_type: "project-deleted".to_string(),
+                        content: project_id.to_string(),
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Err(e) => error!("❌ Lỗi xóa project: {}", e),
+            }
+        }
+
         "create-ticket" => {
             info!("➕ Client {} tạo ticket mới", client_id);
 
@@ -203,8 +331,11 @@ async fn handle_client_message(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| Uuid::new_v4().to_string());
 
+            let project_id = message["projectId"].as_str().unwrap_or("");
+
             let ticket = crate::database::TicketRecord {
-                id: ticket_id,
+                id: ticket_id.clone(),
+                project_id: project_id.to_string(),
                 title: message["title"].as_str().unwrap_or("").to_string(),
                 description: message["description"].as_str().unwrap_or("").to_string(),
                 status: message["status"].as_str().unwrap_or("todo").to_string(),

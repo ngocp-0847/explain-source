@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useTicketStore } from '@/stores/ticketStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useProjectStore } from '@/stores/projectStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { ticketFormSchema, TicketFormValues } from '@/schemas/ticketSchema'
 import { Ticket } from '@/types/ticket'
@@ -24,6 +25,7 @@ export function TicketFormDialog() {
   
   const addTicket = useTicketStore(state => state.addTicket)
   const updateTicket = useTicketStore(state => state.updateTicket)
+  const selectedProjectId = useProjectStore(state => state.selectedProjectId)
   const { send } = useWebSocketStore()
 
   const form = useForm<TicketFormValues>({
@@ -70,8 +72,14 @@ export function TicketFormDialog() {
       })
     } else {
       // Create mode - add new ticket
+      if (!selectedProjectId) {
+        alert('Vui lòng chọn project trước khi tạo ticket')
+        return
+      }
+      
       const newTicket: Ticket = {
         id: crypto.randomUUID(),
+        projectId: selectedProjectId,
         title: data.title,
         description: data.description,
         status: 'todo',
@@ -86,6 +94,7 @@ export function TicketFormDialog() {
       send({
         type: 'create-ticket',
         id: newTicket.id,
+        projectId: selectedProjectId,
         title: data.title,
         description: data.description,
         status: 'todo',

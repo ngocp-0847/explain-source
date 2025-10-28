@@ -41,6 +41,7 @@ pub struct CodeAnalysisRequest {
     pub ticket_id: String,
     pub code_context: String,
     pub question: String,
+    pub project_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -78,6 +79,37 @@ async fn main() {
 
     info!("✅ Database schema initialized");
 
+    // Clear old data and seed sample projects
+    info!("🗑️ Clearing old tickets data...");
+    database.clear_all_tickets().await.expect("Failed to clear tickets");
+    info!("✅ Old data cleared");
+
+    // Seed sample projects
+    info!("🌱 Seeding sample projects...");
+    let sample_projects = vec![
+        crate::database::ProjectRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "E-commerce Platform".to_string(),
+            description: Some("Phân tích flow thanh toán và quản lý đơn hàng".to_string()),
+            directory_path: "/home/phan.ngoc@sun-asterisk.com/Documents/projects/explain-source/rust-backend".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        },
+        crate::database::ProjectRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Blog CMS".to_string(),
+            description: Some("Hệ thống quản lý nội dung và authentication".to_string()),
+            directory_path: "/home/phan.ngoc@sun-asterisk.com/Documents/projects/explain-source".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        },
+    ];
+
+    for project in &sample_projects {
+        database.create_project(project).await.expect("Failed to create project");
+    }
+    info!("✅ Seeded {} sample projects", sample_projects.len());
+
     // Initialize message store
     let msg_store = Arc::new(MsgStore::new(database.clone()));
 
@@ -86,8 +118,18 @@ async fn main() {
     // Initialize broadcast channel for legacy messages
     let (broadcast_tx, _broadcast_rx) = broadcast::channel(1000);
 
-    // Initialize Cursor Agent
-    let cursor_agent = Arc::new(CursorAgent::new());
+    // Initialize Cursor Agent with config from environment
+    let cursor_config = cursor_agent::CursorAgentConfig::from_env();
+    info!("🔧 Cursor Agent config:");
+    info!("  - Executable: {}", cursor_config.executable_path);
+    info!("  - Timeout: {}s", cursor_config.timeout_seconds);
+    info!("  - Retries: {}", cursor_config.max_retries);
+    info!("  - Output format: {:?}", cursor_config.output_format);
+    if cursor_config.api_key.is_some() {
+        info!("  - API key: [SET]");
+    }
+    
+    let cursor_agent = Arc::new(CursorAgent::with_config(cursor_config));
 
     info!("✅ Cursor Agent initialized");
 

@@ -4,8 +4,19 @@ use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePool, FromRow, Row};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ProjectRecord {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub directory_path: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TicketRecord {
     pub id: String,
+    pub project_id: String,
     pub title: String,
     pub description: String,
     pub status: String,
@@ -49,17 +60,14 @@ impl Database {
     }
 
     pub async fn init_schema(&self) -> Result<()> {
-        // Create tickets table
+        // Create projects table
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS tickets (
+            CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL,
-                status TEXT NOT NULL CHECK(status IN ('todo', 'in-progress', 'done')),
-                code_context TEXT,
-                analysis_result TEXT,
-                is_analyzing BOOLEAN DEFAULT 0,
+                name TEXT NOT NULL,
+                description TEXT,
+                directory_path TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -67,6 +75,41 @@ impl Database {
         )
         .execute(&self.pool)
         .await?;
+
+        // Create tickets table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS tickets (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('todo', 'in-progress', 'done')),
+                code_context TEXT,
+                analysis_result TEXT,
+                is_analyzing BOOLEAN DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Add project_id column to existing tickets table if it doesn't exist
+        let _ = sqlx::query(
+            r#"
+            ALTER TABLE tickets ADD COLUMN project_id TEXT
+            "#
+        )
+        .execute(&self.pool)
+        .await;
+
+        // Create index for tickets by project
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tickets_project_id ON tickets(project_id)")
+            .execute(&self.pool)
+            .await?;
 
         // Create structured_logs table
         sqlx::query(
@@ -115,15 +158,106 @@ impl Database {
         Ok(())
     }
 
+    // Clear all existing data (for migration)
+    pub async fn clear_all_tickets(&self) -> Result<()> {
+        sqlx::query("DELETE FROM analysis_sessions")
+            .execute(&self.pool)
+            .await?;
+        
+        sqlx::query("DELETE FROM structured_logs")
+            .execute(&self.pool)
+            .await?;
+        
+        sqlx::query("DELETE FROM tickets")
+            .execute(&self.pool)
+            .await?;
+        
+        sqlx::query("DELETE FROM projects")
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    // Project CRUD operations
+    pub async fn create_project(&self, project: &ProjectRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO projects (id, name, description, directory_path, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(&project.id)
+        .bind(&project.name)
+        .bind(&project.description)
+        .bind(&project.directory_path)
+        .bind(&project.created_at)
+        .bind(&project.updated_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_project(&self, id: &str) -> Result<Option<ProjectRecord>> {
+        let project = sqlx::query_as::<_, ProjectRecord>(
+            "SELECT * FROM projects WHERE id = ?1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(project)
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<ProjectRecord>> {
+        let projects = sqlx::query_as::<_, ProjectRecord>(
+            "SELECT * FROM projects ORDER BY created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(projects)
+    }
+
+    pub async fn update_project(&self, project: &ProjectRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE projects
+            SET name = ?1, description = ?2, directory_path = ?3, updated_at = ?4
+            WHERE id = ?5
+            "#,
+        )
+        .bind(&project.name)
+        .bind(&project.description)
+        .bind(&project.directory_path)
+        .bind(&project.updated_at)
+        .bind(&project.id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_project(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM projects WHERE id = ?1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     // Ticket CRUD operations
     pub async fn create_ticket(&self, ticket: &TicketRecord) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO tickets (id, title, description, status, code_context, analysis_result, is_analyzing, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            INSERT INTO tickets (id, project_id, title, description, status, code_context, analysis_result, is_analyzing, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             "#,
         )
         .bind(&ticket.id)
+        .bind(&ticket.project_id)
         .bind(&ticket.title)
         .bind(&ticket.description)
         .bind(&ticket.status)
@@ -142,11 +276,12 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE tickets
-            SET title = ?1, description = ?2, status = ?3, code_context = ?4,
-                analysis_result = ?5, is_analyzing = ?6, updated_at = ?7
-            WHERE id = ?8
+            SET project_id = ?1, title = ?2, description = ?3, status = ?4, code_context = ?5,
+                analysis_result = ?6, is_analyzing = ?7, updated_at = ?8
+            WHERE id = ?9
             "#,
         )
+        .bind(&ticket.project_id)
         .bind(&ticket.title)
         .bind(&ticket.description)
         .bind(&ticket.status)
@@ -231,6 +366,17 @@ impl Database {
         let tickets = sqlx::query_as::<_, TicketRecord>(
             "SELECT * FROM tickets ORDER BY created_at DESC"
         )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(tickets)
+    }
+
+    pub async fn list_tickets_by_project(&self, project_id: &str) -> Result<Vec<TicketRecord>> {
+        let tickets = sqlx::query_as::<_, TicketRecord>(
+            "SELECT * FROM tickets WHERE project_id = ?1 ORDER BY created_at DESC"
+        )
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await?;
 

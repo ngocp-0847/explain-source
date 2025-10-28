@@ -2,6 +2,15 @@ export type TicketStatus = 'todo' | 'in-progress' | 'done'
 
 export type LogMessageType = 'tool_use' | 'assistant' | 'error' | 'system'
 
+export interface Project {
+  id: string
+  name: string
+  description?: string
+  directoryPath: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface StructuredLog {
   id: string
   ticketId: string
@@ -14,6 +23,7 @@ export interface StructuredLog {
 
 export interface Ticket {
   id: string
+  projectId: string
   title: string
   description: string
   status: TicketStatus
