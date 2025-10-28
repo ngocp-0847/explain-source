@@ -1,3 +1,0 @@
-2025-10-27 13:58:16 +07:00:  ⚠ Invalid next.config.js options detected: 
-2025-10-27 13:58:16 +07:00:  ⚠     Unrecognized key(s) in object: 'appDir' at "experimental"
-2025-10-27 13:58:16 +07:00:  ⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
