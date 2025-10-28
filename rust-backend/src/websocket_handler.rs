@@ -110,6 +110,22 @@ async fn handle_client_message(
                 request.ticket_id, client_id
             );
 
+            // Validate ticket exists before spawning analysis
+            match state.database.get_ticket(&request.ticket_id).await {
+                Ok(Some(_)) => {
+                    // Ticket exists, proceed with analysis
+                    info!("✅ Ticket {} tồn tại trong database", request.ticket_id);
+                }
+                Ok(None) => {
+                    error!("⚠️ Ticket {} không tồn tại trong database, sẽ được tự động tạo", request.ticket_id);
+                    // Will be auto-created in cursor_agent
+                }
+                Err(e) => {
+                    error!("❌ Lỗi kiểm tra ticket {}: {}", request.ticket_id, e);
+                    // Will try to auto-create in cursor_agent
+                }
+            }
+
             // Spawn analysis in background
             let cursor_agent = state.cursor_agent.clone();
             let msg_store = state.msg_store.clone();
@@ -163,8 +179,15 @@ async fn handle_client_message(
             match state.database.list_tickets().await {
                 Ok(tickets) => {
                     info!("✅ Tải được {} tickets từ database", tickets.len());
-                    // Tickets will be sent back via broadcast or direct response
-                    // For now, just log success
+                    
+                    // Send tickets back to client via broadcast
+                    let tickets_json = serde_json::to_string(&tickets).unwrap_or_default();
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: "system".to_string(),
+                        message_type: "tickets-loaded".to_string(),
+                        content: tickets_json,
+                        timestamp: chrono::Utc::now(),
+                    });
                 }
                 Err(e) => {
                     error!("❌ Lỗi tải tickets: {}", e);
@@ -192,10 +215,19 @@ async fn handle_client_message(
                 updated_at: chrono::Utc::now().to_rfc3339(),
             };
 
-            if let Err(e) = state.database.create_ticket(&ticket).await {
-                error!("❌ Lỗi tạo ticket: {}", e);
-            } else {
-                info!("✅ Tạo ticket thành công: {}", ticket.id);
+            match state.database.create_ticket(&ticket).await {
+                Ok(_) => {
+                    info!("✅ Tạo ticket thành công: {}", ticket.id);
+                    
+                    // Broadcast ticket created event to all clients
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: ticket.id.clone(),
+                        message_type: "ticket-created".to_string(),
+                        content: serde_json::to_string(&ticket).unwrap_or_default(),
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Err(e) => error!("❌ Lỗi tạo ticket: {}", e),
             }
         }
 
@@ -208,8 +240,19 @@ async fn handle_client_message(
                 client_id, ticket_id, new_status
             );
 
-            if let Err(e) = state.database.update_ticket_status(ticket_id, new_status).await {
-                error!("❌ Lỗi cập nhật ticket status: {}", e);
+            match state.database.update_ticket_status(ticket_id, new_status).await {
+                Ok(_) => {
+                    info!("✅ Đã cập nhật ticket {} status sang {}", ticket_id, new_status);
+                    
+                    // Broadcast status update to all clients
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: ticket_id.to_string(),
+                        message_type: "ticket-status-updated".to_string(),
+                        content: new_status.to_string(),
+                        timestamp: chrono::Utc::now(),
+                    });
+                }
+                Err(e) => error!("❌ Lỗi cập nhật ticket status {}: {}", ticket_id, e),
             }
         }
 

@@ -1,25 +1,30 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Ticket } from '@/types/ticket'
+import { useChatStore } from '@/stores/chatStore'
 import { SendIcon, BotIcon, UserIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useUIStore } from '@/stores/uiStore'
+import { useTicketStore } from '@/stores/ticketStore'
 
 interface ChatInterfaceProps {
-  selectedTicket: Ticket | null
   isConnected: boolean
 }
 
-interface ChatMessage {
-  id: string
-  type: 'user' | 'bot'
-  content: string
-  timestamp: Date
-}
+export function ChatInterface({ isConnected }: ChatInterfaceProps) {
+  const messages = useChatStore(state => state.messages)
+  const addMessage = useChatStore(state => state.addMessage)
+  const clearMessages = useChatStore(state => state.clearMessages)
+  const isTyping = useChatStore(state => state.isTyping)
+  const setTyping = useChatStore(state => state.setTyping)
 
-export function ChatInterface({ selectedTicket, isConnected }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
+  const selectedTicketId = useUIStore(state => state.selectedTicketIdForDetail)
+  const tickets = useTicketStore(state => state.tickets)
+  const selectedTicket = tickets.find(t => t.id === selectedTicketId)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -33,41 +38,40 @@ export function ChatInterface({ selectedTicket, isConnected }: ChatInterfaceProp
   useEffect(() => {
     if (selectedTicket) {
       // Reset messages when ticket changes
-      setMessages([
-        {
-          id: '1',
-          type: 'bot',
-          content: `Tôi sẽ giúp bạn phân tích ticket: "${selectedTicket.title}"`,
-          timestamp: new Date()
-        }
-      ])
+      clearMessages()
+      addMessage({
+        id: crypto.randomUUID(),
+        type: 'bot',
+        content: `Tôi sẽ giúp bạn phân tích ticket: "${selectedTicket.title}"`,
+        timestamp: new Date()
+      })
     }
-  }, [selectedTicket])
+  }, [selectedTicket, clearMessages, addMessage])
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !isConnected) return
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'user',
+    const userMessage = {
+      id: crypto.randomUUID(),
+      type: 'user' as const,
       content: inputMessage,
       timestamp: new Date()
     }
 
-    setMessages(prev => [...prev, userMessage])
+    addMessage(userMessage)
     setInputMessage('')
-    setIsTyping(true)
+    setTyping(true)
 
-    // Simulate bot response (in real app, this would call the Rust backend)
+    // Simulate bot response
     setTimeout(() => {
-      const botMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'bot',
+      const botMessage = {
+        id: crypto.randomUUID(),
+        type: 'bot' as const,
         content: `Tôi đang phân tích code trong context "${selectedTicket?.codeContext || 'N/A'}" để trả lời câu hỏi của bạn...`,
         timestamp: new Date()
       }
-      setMessages(prev => [...prev, botMessage])
-      setIsTyping(false)
+      addMessage(botMessage)
+      setTyping(false)
     }, 2000)
   }
 
@@ -92,72 +96,72 @@ export function ChatInterface({ selectedTicket, isConnected }: ChatInterfaceProp
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map(message => (
-          <div
-            key={message.id}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div className={`flex items-start space-x-2 max-w-xs ${
-              message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-            }`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                message.type === 'user' ? 'bg-blue-500' : 'bg-gray-200'
+      <ScrollArea className="flex-1 p-4">
+        <div className="space-y-4">
+          {messages.map(message => (
+            <div
+              key={message.id}
+              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`flex items-start space-x-2 max-w-xs ${
+                message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
               }`}>
-                {message.type === 'user' ? (
-                  <UserIcon className="w-4 h-4 text-white" />
-                ) : (
-                  <BotIcon className="w-4 h-4 text-gray-600" />
-                )}
-              </div>
-              <div className={`chat-message ${message.type}`}>
-                <p className="text-sm">{message.content}</p>
-                <p className="text-xs opacity-70 mt-1">
-                  {message.timestamp.toLocaleTimeString('vi-VN')}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
-        
-        {isTyping && (
-          <div className="flex justify-start">
-            <div className="flex items-start space-x-2">
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                <BotIcon className="w-4 h-4 text-gray-600" />
-              </div>
-              <div className="chat-message bot">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  message.type === 'user' ? 'bg-blue-500' : 'bg-gray-200'
+                }`}>
+                  {message.type === 'user' ? (
+                    <UserIcon className="w-4 h-4 text-white" />
+                  ) : (
+                    <BotIcon className="w-4 h-4 text-gray-600" />
+                  )}
+                </div>
+                <div className={`chat-message ${message.type}`}>
+                  <p className="text-sm">{message.content}</p>
+                  <p className="text-xs opacity-70 mt-1">
+                    {message.timestamp.toLocaleTimeString('vi-VN')}
+                  </p>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
+          ))}
+
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="flex items-start space-x-2">
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                  <BotIcon className="w-4 h-4 text-gray-600" />
+                </div>
+                <div className="chat-message bot">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
 
       <div className="p-4 border-t border-gray-200">
         <div className="flex space-x-2">
-          <input
+          <Input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Nhập câu hỏi về code..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={!isConnected}
           />
-          <button
+          <Button
             onClick={handleSendMessage}
             disabled={!inputMessage.trim() || !isConnected}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <SendIcon className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
         {!isConnected && (
           <p className="text-xs text-red-500 mt-2">

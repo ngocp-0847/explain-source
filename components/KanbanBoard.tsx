@@ -1,13 +1,12 @@
 'use client'
 
-import { Ticket, TicketStatus } from '@/types/ticket'
+import { TicketStatus } from '@/types/ticket'
 import { KanbanColumn } from './KanbanColumn'
-import { PlusIcon } from 'lucide-react'
+import { useTicketStore } from '@/stores/ticketStore'
 
 interface KanbanBoardProps {
-  tickets: Ticket[]
-  onEditTicket: (ticket: Ticket) => void
-  onCardClick: (ticket: Ticket) => void
+  onEditTicket: (ticket: any) => void
+  onCardClick: (ticket: any) => void
 }
 
 const columns: { id: TicketStatus; title: string; color: string }[] = [
@@ -16,7 +15,9 @@ const columns: { id: TicketStatus; title: string; color: string }[] = [
   { id: 'done', title: 'Hoàn Thành', color: 'bg-green-100' }
 ]
 
-export function KanbanBoard({ tickets, onEditTicket, onCardClick }: KanbanBoardProps) {
+export function KanbanBoard({ onEditTicket, onCardClick }: KanbanBoardProps) {
+  const tickets = useTicketStore(state => state.tickets)
+
   return (
     <div className="flex space-x-6 overflow-x-auto pb-4">
       {columns.map(column => (

@@ -25,6 +25,28 @@ impl CursorAgent {
     ) -> Result<CodeAnalysisResponse> {
         info!("🚀 Bắt đầu phân tích code cho ticket: {}", request.ticket_id);
 
+        // Check if ticket exists, auto-create if not to prevent FK constraint failure
+        let ticket = database.get_ticket(&request.ticket_id).await?;
+        if ticket.is_none() {
+            info!("🔧 Ticket {} chưa tồn tại, tự động tạo ticket", request.ticket_id);
+            
+            // Auto-create ticket to prevent FK constraint failure
+            let auto_ticket = crate::database::TicketRecord {
+                id: request.ticket_id.clone(),
+                title: "Auto-created".to_string(),
+                description: request.question.clone(),
+                status: "in-progress".to_string(),
+                code_context: Some(request.code_context.clone()),
+                analysis_result: None,
+                is_analyzing: true,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            };
+            
+            database.create_ticket(&auto_ticket).await?;
+            info!("✅ Đã tự động tạo ticket: {}", request.ticket_id);
+        }
+
         // Create analysis session in database
         let session_id = database.create_session(&request.ticket_id).await?;
 

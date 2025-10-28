@@ -45,3 +45,5 @@ rust-backend/Cargo.lock
 
 # OS
 Thumbs.db
+
+logs/*

@@ -67,3 +67,8 @@ export interface CodeAnalysisErrorMessage extends WebSocketMessage {
   error: string
   timestamp: string
 }
+
+// Type guard để validate LogMessageType
+export function isValidLogMessageType(type: string): type is LogMessageType {
+  return ['tool_use', 'assistant', 'error', 'system'].includes(type)
+}

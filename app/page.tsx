@@ -1,179 +1,159 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent } from '@dnd-kit/core'
+import { useEffect } from 'react'
+import { DndContext, DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { KanbanBoard } from '@/components/KanbanBoard'
 import { ChatInterface } from '@/components/ChatInterface'
-import { TicketModal } from '@/components/TicketModal'
-import { TicketDetailModal } from '@/components/TicketDetailModal'
-import { useSocket } from '@/hooks/useSocket'
-import {
-  Ticket,
-  TicketStatus,
-  StructuredLogMessage,
-  CodeAnalysisCompleteMessage,
-  CodeAnalysisErrorMessage,
-} from '@/types/ticket'
+import { TicketFormDialog } from '@/components/TicketFormDialog'
+import { TicketDetailDialog } from '@/components/TicketDetailDialog'
+import { useTicketStore } from '@/stores/ticketStore'
+import { useWebSocketStore } from '@/stores/websocketStore'
+import { useUIStore } from '@/stores/uiStore'
+import { Ticket, TicketStatus, StructuredLogMessage, CodeAnalysisCompleteMessage, CodeAnalysisErrorMessage, isValidLogMessageType } from '@/types/ticket'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
 export default function Home() {
-  const [tickets, setTickets] = useState<Ticket[]>([])
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null)
+  const tickets = useTicketStore(state => state.tickets)
+  const setTickets = useTicketStore(state => state.setTickets)
+  const addTicket = useTicketStore(state => state.addTicket)
+  const updateTicketStatus = useTicketStore(state => state.updateTicketStatus)
+  const addTicketLog = useTicketStore(state => state.addTicketLog)
+  const setAnalysisResult = useTicketStore(state => state.setAnalysisResult)
+  const setTicketAnalyzing = useTicketStore(state => state.setTicketAnalyzing)
+  const startAnalysis = useTicketStore(state => state.startAnalysis)
 
-  // Detail modal state
-  const [detailModalOpen, setDetailModalOpen] = useState(false)
-  const [selectedTicketForDetail, setSelectedTicketForDetail] = useState<Ticket | null>(null)
+  const openTicketModal = useUIStore(state => state.openTicketModal)
+  const closeTicketModal = useUIStore(state => state.closeTicketModal)
+  const isTicketModalOpen = useUIStore(state => state.isTicketModalOpen)
+  const selectedTicketForEdit = useUIStore(state => state.selectedTicketForEdit)
 
-  const { socket, isConnected } = useSocket()
+  const openDetailModal = useUIStore(state => state.openDetailModal)
+  const closeDetailModal = useUIStore(state => state.closeDetailModal)
+  const isDetailModalOpen = useUIStore(state => state.isDetailModalOpen)
+  const selectedTicketForDetail = useUIStore(state => state.selectedTicketForDetail)
+  const setDraggedTicket = useUIStore(state => state.setDraggedTicket)
+  const draggedTicket = useUIStore(state => state.draggedTicket)
 
+  const { isConnected, subscribe, connect, send } = useWebSocketStore()
+
+  // Load tickets from backend on mount
   useEffect(() => {
-    // Load initial tickets with proper structure
-    const initialTickets: Ticket[] = [
-      {
-        id: '1',
-        title: 'Hiểu flow đăng nhập user',
-        description: 'Cần hiểu cách hệ thống xử lý đăng nhập user',
-        status: 'todo',
-        createdAt: new Date(),
-        codeContext: 'auth/login.js',
-        isAnalyzing: false,
-        logs: [],
-      },
-      {
-        id: '2',
-        title: 'Phân tích API payment',
-        description: 'Tìm hiểu flow thanh toán trong hệ thống',
-        status: 'todo',
-        createdAt: new Date(),
-        codeContext: 'api/payment.js',
-        isAnalyzing: false,
-        logs: [],
-      },
-    ]
-    setTickets(initialTickets)
-  }, [])
-
-  useEffect(() => {
-    if (socket) {
-      const handleMessage = (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data)
-          console.log('📩 Nhận được message từ backend:', data)
-
-          switch (data.message_type) {
-            case 'structured-log':
-              handleStructuredLog(data as StructuredLogMessage)
-              break
-
-            case 'code-analysis-complete':
-              handleAnalysisComplete(data as CodeAnalysisCompleteMessage)
-              break
-
-            case 'code-analysis-error':
-              handleAnalysisError(data as CodeAnalysisErrorMessage)
-              break
-
-            default:
-              console.log('Unknown message type:', data.message_type)
-          }
-        } catch (error) {
-          console.error('Lỗi parse message:', error)
-        }
-      }
-
-      socket.addEventListener('message', handleMessage)
-
-      return () => {
-        socket.removeEventListener('message', handleMessage)
-      }
+    if (isConnected) {
+      send({ type: 'load-tickets' })
     }
-  }, [socket])
+  }, [isConnected, send])
 
-  const handleStructuredLog = (message: StructuredLogMessage) => {
-    const { log } = message
-
-    console.log('📝 Structured log:', log)
-
-    setTickets((prev) =>
-      prev.map((ticket) => {
-        if (ticket.id === log.ticketId || ticket.id === log.ticket_id) {
-          return {
-            ...ticket,
-            logs: [...ticket.logs, log],
-          }
-        }
-        return ticket
-      })
-    )
-
-    // Update selected ticket for detail modal if it's open
-    setSelectedTicketForDetail((prev) => {
-      if (prev && (prev.id === log.ticketId || prev.id === log.ticket_id)) {
-        return {
-          ...prev,
-          logs: [...prev.logs, log],
-        }
-      }
-      return prev
-    })
-  }
-
-  const handleAnalysisComplete = (message: CodeAnalysisCompleteMessage) => {
-    console.log('✅ Analysis complete:', message)
-
-    setTickets((prev) =>
-      prev.map((ticket) => {
-        if (ticket.id === message.ticket_id) {
-          return {
-            ...ticket,
-            analysisResult: message.content,
+  // Fallback: Set initial tickets if no tickets from backend after 1 second
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (tickets.length === 0 && isConnected) {
+        // Set initial tickets and sync to backend
+        const initialTickets: Ticket[] = [
+          {
+            id: crypto.randomUUID(),
+            title: 'Hiểu flow đăng nhập user',
+            description: 'Cần hiểu cách hệ thống xử lý đăng nhập user',
+            status: 'todo',
+            createdAt: new Date(),
+            codeContext: 'auth/login.js',
             isAnalyzing: false,
-          }
-        }
-        return ticket
-      })
-    )
-
-    // Update selected ticket for detail modal
-    setSelectedTicketForDetail((prev) => {
-      if (prev && prev.id === message.ticket_id) {
-        return {
-          ...prev,
-          analysisResult: message.content,
-          isAnalyzing: false,
-        }
-      }
-      return prev
-    })
-  }
-
-  const handleAnalysisError = (message: CodeAnalysisErrorMessage) => {
-    console.error('❌ Analysis error:', message)
-
-    setTickets((prev) =>
-      prev.map((ticket) => {
-        if (ticket.id === message.ticket_id) {
-          return {
-            ...ticket,
+            logs: [],
+          },
+          {
+            id: crypto.randomUUID(),
+            title: 'Phân tích API payment',
+            description: 'Tìm hiểu flow thanh toán trong hệ thống',
+            status: 'todo',
+            createdAt: new Date(),
+            codeContext: 'api/payment.js',
             isAnalyzing: false,
-          }
-        }
-        return ticket
-      })
-    )
-
-    // Update selected ticket for detail modal
-    setSelectedTicketForDetail((prev) => {
-      if (prev && prev.id === message.ticket_id) {
-        return {
-          ...prev,
-          isAnalyzing: false,
-        }
+            logs: [],
+          },
+        ]
+        setTickets(initialTickets)
+        
+        // Sync each ticket to backend
+        initialTickets.forEach(ticket => {
+          send({
+            type: 'create-ticket',
+            id: ticket.id,
+            title: ticket.title,
+            description: ticket.description,
+            status: ticket.status,
+            codeContext: ticket.codeContext || undefined,
+          })
+        })
       }
-      return prev
+    }, 1000)
+    
+    return () => clearTimeout(timer)
+  }, [tickets.length, setTickets, send, isConnected])
+
+  useEffect(() => {
+    // Connect WebSocket
+    connect('ws://localhost:9000/ws')
+
+    // Subscribe to WebSocket messages
+    const unsubscribe = subscribe((data) => {
+      switch (data.message_type) {
+        case 'structured-log':
+          const logMessage = data as StructuredLogMessage
+          const log = logMessage.log
+          
+          // Validate và fix messageType nếu không hợp lệ
+          if (!isValidLogMessageType(log.messageType)) {
+            console.warn(`Invalid messageType received: ${log.messageType}, falling back to 'system'`)
+            log.messageType = 'system'
+          }
+          
+          addTicketLog(log.ticketId || log.ticket_id, log)
+          break
+
+        case 'code-analysis-complete':
+          const completeMsg = data as CodeAnalysisCompleteMessage
+          setAnalysisResult(completeMsg.ticket_id, completeMsg.content)
+          break
+
+        case 'code-analysis-error':
+          const errorMsg = data as CodeAnalysisErrorMessage
+          setTicketAnalyzing(errorMsg.ticket_id, false)
+          break
+
+        case 'tickets-loaded':
+          try {
+            const loadedTickets = JSON.parse(data.content)
+            if (Array.isArray(loadedTickets) && loadedTickets.length > 0) {
+              setTickets(loadedTickets)
+              console.log('✅ Loaded', loadedTickets.length, 'tickets from backend')
+            }
+          } catch (e) {
+            console.error('Failed to parse tickets:', e)
+          }
+          break
+
+        case 'ticket-created':
+          try {
+            const newTicket = JSON.parse(data.content)
+            // Only add if not already in local state
+            if (!tickets.find(t => t.id === newTicket.id)) {
+              addTicket(newTicket)
+            }
+          } catch (e) {
+            console.error('Failed to parse ticket:', e)
+          }
+          break
+
+        case 'ticket-status-updated':
+          const ticketId = data.ticket_id
+          const newStatus = data.content as TicketStatus
+          updateTicketStatus(ticketId, newStatus)
+          break
+      }
     })
-  }
+
+    return unsubscribe
+  }, [connect, subscribe, addTicketLog, setAnalysisResult, setTicketAnalyzing, setTickets, tickets, addTicket, updateTicketStatus])
 
   const handleDragStart = (event: DragStartEvent) => {
     const ticket = tickets.find((t) => t.id === event.active.id)
@@ -189,89 +169,35 @@ export default function Home() {
     const ticketId = active.id as string
     const newStatus = over.id as TicketStatus
 
-    setTickets((prev) =>
-      prev.map((ticket) =>
-        ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
-      )
-    )
+    // 1. Update local state
+    updateTicketStatus(ticketId, newStatus)
 
-    // Trigger Cursor Agent khi ticket được chuyển sang in-progress
+    // 2. Sync to backend FIRST
+    send({
+      type: 'update-ticket-status',
+      ticketId,
+      status: newStatus
+    })
+
+    // 3. Start analysis with small delay to ensure backend processes status update
     if (newStatus === 'in-progress') {
-      const ticket = tickets.find((t) => t.id === ticketId)
-      if (ticket) {
-        handleStartAnalysis(ticketId)
-      }
+      setTimeout(() => {
+        startAnalysis(ticketId, send)
+      }, 150)
     }
-  }
-
-  const handleCreateTicket = (ticket: Omit<Ticket, 'id' | 'createdAt' | 'isAnalyzing' | 'logs'>) => {
-    const newTicket: Ticket = {
-      ...ticket,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      isAnalyzing: false,
-      logs: [],
-    }
-    setTickets((prev) => [...prev, newTicket])
-    setIsModalOpen(false)
   }
 
   const handleEditTicket = (ticket: Ticket) => {
-    setSelectedTicket(ticket)
-    setIsModalOpen(true)
+    useUIStore.getState().setSelectedTicketForEdit(ticket)
+    openTicketModal()
   }
 
   const handleCardClick = (ticket: Ticket) => {
-    setSelectedTicketForDetail(ticket)
-    setDetailModalOpen(true)
+    openDetailModal(ticket.id)
   }
 
   const handleStartAnalysis = (ticketId: string) => {
-    const ticket = tickets.find((t) => t.id === ticketId)
-
-    if (!ticket) {
-      console.error('Ticket not found:', ticketId)
-      return
-    }
-
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      console.log('🚀 Starting analysis for ticket:', ticketId)
-
-      // Mark ticket as analyzing and clear previous logs
-      setTickets((prev) =>
-        prev.map((t) =>
-          t.id === ticketId
-            ? { ...t, isAnalyzing: true, logs: [], analysisResult: undefined }
-            : t
-        )
-      )
-
-      // Update detail modal if open
-      setSelectedTicketForDetail((prev) => {
-        if (prev && prev.id === ticketId) {
-          return {
-            ...prev,
-            isAnalyzing: true,
-            logs: [],
-            analysisResult: undefined,
-          }
-        }
-        return prev
-      })
-
-      // Send WebSocket message to backend
-      const message = {
-        type: 'start-code-analysis',
-        ticketId,
-        codeContext: ticket.codeContext || '',
-        question: ticket.description,
-      }
-
-      socket.send(JSON.stringify(message))
-      console.log('📤 Sent analysis request:', message)
-    } else {
-      console.error('WebSocket not connected')
-    }
+    startAnalysis(ticketId, send)
   }
 
   return (
@@ -281,19 +207,19 @@ export default function Home() {
           <div className="flex justify-between items-center h-16">
             <h1 className="text-2xl font-bold text-gray-900">QA Chatbot MVP</h1>
             <div className="flex items-center space-x-4">
-              <div
-                className={`px-3 py-1 rounded-full text-sm ${
-                  isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}
+              <Badge
+                variant={isConnected ? 'default' : 'destructive'}
+                className={
+                  isConnected
+                    ? 'bg-green-100 text-green-800 hover:bg-green-100'
+                    : 'bg-red-100 text-red-800 hover:bg-red-100'
+                }
               >
                 {isConnected ? '✅ Đã kết nối' : '❌ Mất kết nối'}
-              </div>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              </Badge>
+              <Button onClick={openTicketModal}>
                 Tạo Ticket Mới
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -304,46 +230,27 @@ export default function Home() {
           <div className="lg:col-span-2">
             <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
               <KanbanBoard
-                tickets={tickets}
                 onEditTicket={handleEditTicket}
                 onCardClick={handleCardClick}
               />
-              <DragOverlay>
-                {draggedTicket ? (
-                  <div className="kanban-card dragging">
-                    <h3 className="font-semibold">{draggedTicket.title}</h3>
-                    <p className="text-sm text-gray-600">{draggedTicket.description}</p>
-                  </div>
-                ) : null}
-              </DragOverlay>
+              {draggedTicket ? (
+                <div className="kanban-card dragging fixed pointer-events-none z-50">
+                  <h3 className="font-semibold">{draggedTicket.title}</h3>
+                  <p className="text-sm text-gray-600">{draggedTicket.description}</p>
+                </div>
+              ) : null}
             </DndContext>
           </div>
 
           <div className="lg:col-span-1">
-            <ChatInterface selectedTicket={selectedTicket} isConnected={isConnected} />
+            <ChatInterface isConnected={isConnected} />
           </div>
         </div>
       </main>
 
-      <TicketModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false)
-          setSelectedTicket(null)
-        }}
-        onSubmit={handleCreateTicket}
-        ticket={selectedTicket}
-      />
+      <TicketFormDialog />
 
-      <TicketDetailModal
-        ticket={selectedTicketForDetail}
-        isOpen={detailModalOpen}
-        onClose={() => {
-          setDetailModalOpen(false)
-          setSelectedTicketForDetail(null)
-        }}
-        onStartAnalysis={handleStartAnalysis}
-      />
+      <TicketDetailDialog onStartAnalysis={handleStartAnalysis} />
     </div>
   )
 }

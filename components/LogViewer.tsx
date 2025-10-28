@@ -174,5 +174,14 @@ function getLogConfig(messageType: LogMessageType) {
         borderColor: 'border-gray-500',
         textColor: 'text-gray-400',
       }
+    default:
+      // Fallback cho messageType không hợp lệ
+      return {
+        icon: 'ℹ️',
+        label: 'UNKNOWN',
+        bgColor: 'bg-gray-800/30',
+        borderColor: 'border-gray-500',
+        textColor: 'text-gray-400',
+      }
   }
 }
