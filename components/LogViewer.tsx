@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { StructuredLog, LogMessageType } from '@/types/ticket'
 import { Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 // Utility function để parse content JSON và extract type
 function parseLogContent(content: string): { 
@@ -24,6 +26,42 @@ function parseLogContent(content: string): {
       isJson: false
     }
   }
+}
+
+// Function để merge assistant logs thành markdown content
+function mergeAssistantLogs(logs: StructuredLog[]): string {
+  const assistantLogs = logs
+    .filter(log => {
+      const { contentType } = parseLogContent(log.content)
+      return log.messageType === 'assistant' || contentType === 'assistant'
+    })
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+  const markdownParts: string[] = []
+
+  for (const log of assistantLogs) {
+    const { parsedContent } = parseLogContent(log.content)
+    
+    if (parsedContent?.content && Array.isArray(parsedContent.content)) {
+      // Extract text từ content array
+      const textParts = parsedContent.content
+        .filter((item: any) => item.type === 'text')
+        .map((item: any) => item.text)
+        .join('\n\n')
+      
+      if (textParts.trim()) {
+        markdownParts.push(textParts)
+      }
+    } else if (parsedContent?.message) {
+      // Fallback cho structure khác
+      markdownParts.push(parsedContent.message)
+    } else if (typeof parsedContent === 'string') {
+      // Plain text content
+      markdownParts.push(parsedContent)
+    }
+  }
+
+  return markdownParts.join('\n\n')
 }
 
 // Function để tạo summary text từ parsed content
@@ -83,8 +121,22 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
     setAutoScroll(isAtBottom)
   }
 
+  // Check if analysis is completed (has result log)
+  const isAnalysisCompleted = logs.some(log => {
+    const { contentType } = parseLogContent(log.content)
+    return log.messageType === 'result' || contentType === 'result'
+  })
+
+  // Get merged markdown content from assistant logs
+  const markdownContent = isAnalysisCompleted ? mergeAssistantLogs(logs) : ''
+
   return (
     <div className="flex flex-col h-full">
+      {/* Markdown Preview Section */}
+      {isAnalysisCompleted && markdownContent && (
+        <MarkdownPreview content={markdownContent} />
+      )}
+
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold text-gray-700">
           Nhật Ký Phân Tích {logs.length > 0 && `(${logs.length})`}
@@ -124,6 +176,40 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
           <div ref={scrollRef} />
         </div>
       </div>
+    </div>
+  )
+}
+
+function MarkdownPreview({ content }: { content: string }) {
+  const [isExpanded, setIsExpanded] = useState(true)
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
+      <div className="flex items-center justify-between p-3 border-b border-gray-200">
+        <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+          📝 Kết Quả Phân Tích
+        </h4>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+      
+      {isExpanded && (
+        <div className="p-4 max-h-96 overflow-y-auto markdown-preview">
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
