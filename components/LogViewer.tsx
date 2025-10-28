@@ -115,12 +115,26 @@ interface LogViewerProps {
 export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+  const [isLogsExpanded, setIsLogsExpanded] = useState(true)
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }
   }, [logs, autoScroll])
+
+  // Check if analysis is completed (has result log)
+  const isAnalysisCompleted = logs.some(log => {
+    const { contentType } = parseLogContent(log.content)
+    return log.messageType === 'result' || contentType === 'result'
+  })
+
+  // Auto-collapse logs when analysis is completed
+  useEffect(() => {
+    if (isAnalysisCompleted) {
+      setIsLogsExpanded(false)
+    }
+  }, [isAnalysisCompleted])
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const element = e.currentTarget
@@ -129,12 +143,6 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
     ) < 50
     setAutoScroll(isAtBottom)
   }
-
-  // Check if analysis is completed (has result log)
-  const isAnalysisCompleted = logs.some(log => {
-    const { contentType } = parseLogContent(log.content)
-    return log.messageType === 'result' || contentType === 'result'
-  })
 
   // Get merged markdown content from assistant logs
   const markdownContent = isAnalysisCompleted ? mergeAssistantLogs(logs) : ''
@@ -147,9 +155,23 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
       )}
 
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-gray-700">
-          Nhật Ký Phân Tích {logs.length > 0 && `(${logs.length})`}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-gray-700">
+            Nhật Ký Phân Tích {logs.length > 0 && `(${logs.length})`}
+          </h3>
+          {logs.length > 0 && (
+            <button
+              onClick={() => setIsLogsExpanded(!isLogsExpanded)}
+              className="text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              {isLogsExpanded ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
+          )}
+        </div>
         {logs.length > 0 && (
           <button
             onClick={() => setAutoScroll(!autoScroll)}
@@ -160,31 +182,33 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
         )}
       </div>
 
-      <div
-        className="log-viewer flex-1 max-h-96 overflow-y-auto bg-gray-900 rounded-lg font-mono text-sm"
-        onScroll={handleScroll}
-      >
-        <div className="p-4 space-y-2">
-          {logs.length === 0 && !isAnalyzing && (
-            <div className="text-gray-500 text-center py-8">
-              Chưa có log nào. Click "Bắt Đầu Phân Tích" để bắt đầu.
-            </div>
-          )}
+      {isLogsExpanded && (
+        <div
+          className="log-viewer flex-1 max-h-96 overflow-y-auto bg-gray-900 rounded-lg font-mono text-sm"
+          onScroll={handleScroll}
+        >
+          <div className="p-4 space-y-2">
+            {logs.length === 0 && !isAnalyzing && (
+              <div className="text-gray-500 text-center py-8">
+                Chưa có log nào. Click "Bắt Đầu Phân Tích" để bắt đầu.
+              </div>
+            )}
 
-          {logs.map((log) => (
-            <LogEntry key={log.id} log={log} />
-          ))}
+            {logs.map((log) => (
+              <LogEntry key={log.id} log={log} />
+            ))}
 
-          {isAnalyzing && (
-            <div className="flex items-center gap-2 text-blue-400 py-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Đang phân tích...</span>
-            </div>
-          )}
+            {isAnalyzing && (
+              <div className="flex items-center gap-2 text-blue-400 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Đang phân tích...</span>
+              </div>
+            )}
 
-          <div ref={scrollRef} />
+            <div ref={scrollRef} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
