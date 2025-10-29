@@ -13,6 +13,7 @@ interface TicketStore {
   addTicketLog: (ticketId: string, log: StructuredLog) => void
   setAnalysisResult: (ticketId: string, result: string) => void
   startAnalysis: (ticketId: string, sendMessage: (message: any) => void) => void
+  stopAnalysis: (ticketId: string) => Promise<void>
   loadTicketLogs: (ticketId: string) => Promise<void>
   stopAnalysisTimeout: (ticketId: string) => void
 }
@@ -195,6 +196,37 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
       clearTimeout(timeouts.get(ticketId)!)
       timeouts.delete(ticketId)
       console.log(`🛑 Cleared timeout for ticket ${ticketId}`)
+    }
+  },
+
+  stopAnalysis: async (ticketId: string) => {
+    // Clear timeout
+    get().stopAnalysisTimeout(ticketId)
+    
+    try {
+      // Call API endpoint
+      await ticketApi.stopAnalysis(ticketId)
+      
+      // Update local state: isAnalyzing = false, giữ logs và partial result
+      set((state) => ({
+        tickets: state.tickets.map((t) =>
+          t.id === ticketId
+            ? { 
+                ...t, 
+                isAnalyzing: false,
+                logs: [...t.logs, {
+                  id: `stop-${Date.now()}`,
+                  ticketId,
+                  messageType: 'system' as const,
+                  content: '⛔ Đã dừng phân tích theo yêu cầu',
+                  timestamp: new Date().toISOString(),
+                }]
+              }
+            : t
+        ),
+      }))
+    } catch (error) {
+      console.error('Failed to stop analysis:', error)
     }
   },
 }))

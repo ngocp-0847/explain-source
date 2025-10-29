@@ -64,11 +64,11 @@
   }
   
   .kanban-card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3 cursor-move hover:shadow-md transition-shadow;
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 cursor-move hover:shadow-md transition-shadow;
   }
   
   .kanban-card.dragging {
-    @apply opacity-50 rotate-2 scale-105;
+    @apply opacity-30 cursor-grabbing;
   }
   
   .kanban-card.in-progress {
@@ -81,6 +81,10 @@
   
   .drag-handle:hover {
     @apply bg-gray-50;
+  }
+  
+  .kanban-card-overlay {
+    @apply shadow-2xl ring-2 ring-blue-400 ring-opacity-50;
   }
   
   .chat-message {

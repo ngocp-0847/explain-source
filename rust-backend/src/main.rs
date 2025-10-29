@@ -1,12 +1,12 @@
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
     response::Response,
-    routing::{get, put},
+    routing::{get, put, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::broadcast;
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use tokio::{sync::{broadcast, Mutex}, task::AbortHandle};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -27,6 +27,7 @@ pub struct AppState {
     pub broadcast_tx: broadcast::Sender<BroadcastMessage>,
     pub database: Arc<Database>,
     pub msg_store: Arc<MsgStore>,
+    pub running_tasks: Arc<Mutex<HashMap<String, AbortHandle>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +118,7 @@ async fn main() {
         broadcast_tx,
         database,
         msg_store,
+        running_tasks: Arc::new(Mutex::new(HashMap::new())),
     };
 
     info!("✅ App state initialized");
@@ -130,6 +132,7 @@ async fn main() {
         .route("/api/projects/:project_id/tickets", get(api_handlers::list_tickets).post(api_handlers::create_ticket))
         .route("/api/tickets/:id/status", put(api_handlers::update_ticket_status))
         .route("/api/tickets/:id/logs", get(api_handlers::get_ticket_logs))
+        .route("/api/tickets/:id/stop-analysis", post(api_handlers::stop_analysis))
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 

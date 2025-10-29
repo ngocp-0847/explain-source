@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { DndContext, DragEndEvent, DragStartEvent } from '@dnd-kit/core'
+import { 
+  DndContext, 
+  DragEndEvent, 
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  DragOverlay
+} from '@dnd-kit/core'
 import { KanbanBoard } from '@/components/KanbanBoard'
 import { ChatInterface } from '@/components/ChatInterface'
 import { TicketFormDialog } from '@/components/TicketFormDialog'
@@ -15,7 +24,8 @@ import { Ticket, TicketStatus, StructuredLogMessage, CodeAnalysisCompleteMessage
 import { projectApi, ticketApi } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Settings2 } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { ArrowLeft, Settings2, GripVertical } from 'lucide-react'
 import { ProjectFormDialog } from '@/components/ProjectFormDialog'
 
 export default function ProjectDetailPage() {
@@ -55,6 +65,15 @@ export default function ProjectDetailPage() {
   const closeProjectSettings = useUIStore(state => state.closeProjectSettings)
 
   const { isConnected, subscribe, connect, send } = useWebSocketStore()
+
+  // Configure drag sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required to start drag
+      },
+    })
+  )
 
   // Load project detail from API
   useEffect(() => {
@@ -192,6 +211,10 @@ export default function ProjectDetailPage() {
     startAnalysis(ticketId, send)
   }
 
+  const handleStopAnalysis = async (ticketId: string) => {
+    await useTicketStore.getState().stopAnalysis(ticketId)
+  }
+
   const handleOpenSettings = () => {
     if (selectedProject) {
       openProjectSettings(selectedProject)
@@ -277,17 +300,31 @@ export default function ProjectDetailPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
-            <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart} 
+              onDragEnd={handleDragEnd}
+            >
               <KanbanBoard
                 onEditTicket={handleEditTicket}
                 onCardClick={handleCardClick}
               />
-              {draggedTicket ? (
-                <div className="kanban-card dragging fixed pointer-events-none z-50">
-                  <h3 className="font-semibold">{draggedTicket.title}</h3>
-                  <p className="text-sm text-gray-600">{draggedTicket.description}</p>
-                </div>
-              ) : null}
+              <DragOverlay>
+                {draggedTicket ? (
+                  <Card className="kanban-card opacity-90 shadow-2xl rotate-3 scale-105">
+                    <CardContent className="p-2">
+                      <div className="flex items-start">
+                        <GripVertical className="w-5 h-5 text-gray-400 mr-1.5" />
+                        <div>
+                          <h4 className="font-medium text-gray-900 mb-1">{draggedTicket.title}</h4>
+                          <p className="text-sm text-gray-600">{draggedTicket.description}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </DragOverlay>
             </DndContext>
           </div>
 
@@ -298,7 +335,7 @@ export default function ProjectDetailPage() {
       </main>
 
       <TicketFormDialog />
-      <TicketDetailDialog onStartAnalysis={handleStartAnalysis} />
+      <TicketDetailDialog onStartAnalysis={handleStartAnalysis} onStopAnalysis={handleStopAnalysis} />
       <ProjectFormDialog 
         isOpen={isProjectSettingsOpen}
         onClose={closeProjectSettings}

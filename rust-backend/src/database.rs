@@ -146,7 +146,7 @@ impl Database {
                 ticket_id TEXT NOT NULL,
                 started_at TEXT NOT NULL,
                 completed_at TEXT,
-                status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+                status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'cancelled')),
                 error_message TEXT,
                 FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
             )
@@ -501,6 +501,38 @@ impl Database {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn cancel_session(&self, session_id: &str, reason: &str) -> Result<()> {
+        let completed_at = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            r#"
+            UPDATE analysis_sessions
+            SET status = 'cancelled', completed_at = ?1, error_message = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(completed_at)
+        .bind(reason)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_active_session_by_ticket(&self, ticket_id: &str) -> Result<Option<AnalysisSession>> {
+        let session = sqlx::query_as::<_, AnalysisSession>(
+            "SELECT * FROM analysis_sessions 
+             WHERE ticket_id = ?1 AND status = 'running' 
+             ORDER BY started_at DESC LIMIT 1"
+        )
+        .bind(ticket_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(session)
     }
 
     pub async fn run_migrations(&self) -> Result<()> {

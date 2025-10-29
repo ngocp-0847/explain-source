@@ -1,7 +1,7 @@
 'use client'
 
 import { Ticket } from '@/types/ticket'
-import { X, CodeIcon, Play, FileText } from 'lucide-react'
+import { X, CodeIcon, Play, FileText, Square } from 'lucide-react'
 import { LogViewer } from './LogViewer'
 // import ReactMarkdown from 'react-markdown' // Removed for now, will display as pre-formatted text
 
@@ -10,6 +10,7 @@ interface TicketDetailModalProps {
   isOpen: boolean
   onClose: () => void
   onStartAnalysis: (ticketId: string) => void
+  onStopAnalysis: (ticketId: string) => void
 }
 
 export function TicketDetailModal({
@@ -17,6 +18,7 @@ export function TicketDetailModal({
   isOpen,
   onClose,
   onStartAnalysis,
+  onStopAnalysis,
 }: TicketDetailModalProps) {
   if (!isOpen || !ticket) return null
 
@@ -94,18 +96,32 @@ export function TicketDetailModal({
                 <h3 className="font-semibold text-gray-700">Phân Tích Code</h3>
               </div>
 
-              <button
-                onClick={() => onStartAnalysis(ticket.id)}
-                disabled={ticket.isAnalyzing}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                  ticket.isAnalyzing
-                    ? 'bg-gray-400 text-white cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg'
-                }`}
-              >
-                <Play className="w-4 h-4" />
-                {ticket.isAnalyzing ? 'Đang Phân Tích...' : 'Bắt Đầu Phân Tích'}
-              </button>
+              {ticket.isAnalyzing ? (
+                <div className="flex gap-2">
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-gray-400 text-white cursor-not-allowed"
+                  >
+                    <Play className="w-4 h-4" />
+                    Đang Phân Tích...
+                  </button>
+                  <button
+                    onClick={() => onStopAnalysis(ticket.id)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 hover:shadow-lg transition-all"
+                  >
+                    <Square className="w-4 h-4" />
+                    Dừng
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => onStartAnalysis(ticket.id)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg transition-all"
+                >
+                  <Play className="w-4 h-4" />
+                  Bắt Đầu Phân Tích
+                </button>
+              )}
             </div>
 
             {/* Log Viewer */}

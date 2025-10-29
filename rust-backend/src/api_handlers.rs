@@ -4,7 +4,9 @@ use axum::{
     response::Json,
 };
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use tracing::{error, info, warn};
 
 use crate::database::{ProjectRecord, StructuredLogRecord, TicketRecord};
 use crate::AppState;
@@ -203,5 +205,82 @@ pub async fn get_ticket_logs(
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+
+// POST /api/tickets/:id/stop-analysis
+pub async fn stop_analysis(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<Value>, StatusCode> {
+    info!("⛔ Stop analysis requested for ticket: {}", id);
+
+    // Check if ticket exists
+    let ticket = match state.database.get_ticket(&id).await {
+        Ok(Some(ticket)) => ticket,
+        Ok(None) => {
+            error!("Ticket {} not found", id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            error!("Failed to get ticket {}: {}", id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    // Check if ticket is currently analyzing
+    if !ticket.is_analyzing {
+        warn!("Ticket {} is not currently being analyzed", id);
+        return Ok(Json(json!({
+            "success": false,
+            "message": "Ticket is not being analyzed"
+        })));
+    }
+
+    // Lookup and abort the running task
+    let handle = {
+        let mut tasks = state.running_tasks.lock().await;
+        tasks.remove(&id)
+    };
+
+    if let Some(handle) = handle {
+        handle.abort();
+        info!("⛔ Aborted analysis task for ticket {}", id);
+    } else {
+        warn!("No running task found for ticket {} (may have already completed)", id);
+    }
+
+    // Update database: set is_analyzing = false
+    if let Err(e) = state.database.update_ticket_analyzing(&id, false).await {
+        error!("Failed to update ticket {} analyzing status: {}", id, e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Find active session and cancel it
+    if let Ok(Some(session)) = state.database.get_active_session_by_ticket(&id).await {
+        if let Err(e) = state.database.cancel_session(&session.id, "Cancelled by user").await {
+            error!("Failed to cancel session {}: {}", session.id, e);
+        }
+    }
+
+    // Create and broadcast stop log
+    let log_entry = crate::log_normalizer::LogNormalizer::new().normalize(
+        "⛔ Đã dừng phân tích theo yêu cầu".to_string(),
+        id.clone(),
+    );
+    state.msg_store.push(log_entry).await;
+
+    // Broadcast stop event to all connected clients
+    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+        ticket_id: id.clone(),
+        message_type: "analysis-stopped".to_string(),
+        content: "Analysis stopped by user".to_string(),
+        timestamp: chrono::Utc::now(),
+    });
+
+    info!("✅ Successfully stopped analysis for ticket {}", id);
+    Ok(Json(json!({
+        "success": true,
+        "message": "Analysis stopped successfully"
+    })))
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { Ticket } from '@/types/ticket'
-import { X, CodeIcon, Play, FileText } from 'lucide-react'
+import { X, CodeIcon, Play, FileText, Square } from 'lucide-react'
 import { LogViewer } from './LogViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,9 +12,10 @@ import { useTicketStore } from '@/stores/ticketStore'
 
 interface TicketDetailDialogProps {
   onStartAnalysis: (ticketId: string) => void
+  onStopAnalysis: (ticketId: string) => void
 }
 
-export function TicketDetailDialog({ onStartAnalysis }: TicketDetailDialogProps) {
+export function TicketDetailDialog({ onStartAnalysis, onStopAnalysis }: TicketDetailDialogProps) {
   const { isOpen, selectedTicketId, onClose } = useUIStore(state => ({
     isOpen: state.isDetailModalOpen,
     selectedTicketId: state.selectedTicketIdForDetail,
@@ -68,8 +69,8 @@ export function TicketDetailDialog({ onStartAnalysis }: TicketDetailDialogProps)
             </div>
 
             {/* Content - Scrollable */}
-            <ScrollArea className="flex-1 p-6">
-              <div className="space-y-6">
+            <ScrollArea className="flex-1 overflow-hidden">
+              <div className="p-6 space-y-6">
                 {/* Description */}
                 <section>
                   <div className="flex items-center gap-2 mb-3">
@@ -101,13 +102,26 @@ export function TicketDetailDialog({ onStartAnalysis }: TicketDetailDialogProps)
                       <h3 className="font-semibold text-gray-700">Phân Tích Code</h3>
                     </div>
 
-                    <Button
-                      onClick={() => onStartAnalysis(ticket.id)}
-                      disabled={ticket.isAnalyzing}
-                    >
-                      <Play className="w-4 h-4 mr-2" />
-                      {ticket.isAnalyzing ? 'Đang Phân Tích...' : 'Bắt Đầu Phân Tích'}
-                    </Button>
+                    {ticket.isAnalyzing ? (
+                      <div className="flex gap-2">
+                        <Button disabled>
+                          <Play className="w-4 h-4 mr-2" />
+                          Đang Phân Tích...
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => onStopAnalysis(ticket.id)}
+                        >
+                          <Square className="w-4 h-4 mr-2" />
+                          Dừng
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button onClick={() => onStartAnalysis(ticket.id)}>
+                        <Play className="w-4 h-4 mr-2" />
+                        Bắt Đầu Phân Tích
+                      </Button>
+                    )}
                   </div>
 
                   {/* Log Viewer */}

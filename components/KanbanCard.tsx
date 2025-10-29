@@ -22,7 +22,13 @@ export function KanbanCard({ ticket, onEdit, onClick }: KanbanCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: ticket.id })
+  } = useSortable({ 
+    id: ticket.id,
+    data: {
+      type: 'ticket',
+      ticket,
+    }
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -44,10 +50,10 @@ export function KanbanCard({ ticket, onEdit, onClick }: KanbanCardProps) {
         ticket.status === 'in-progress' ? 'in-progress' : ''
       } mb-3 cursor-move hover:shadow-md transition-shadow`}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-2">
         <div className="flex items-start">
           {/* Drag Handle */}
-          <div {...listeners} {...attributes} className="drag-handle cursor-grab active:cursor-grabbing mr-2">
+          <div {...listeners} {...attributes} className="drag-handle cursor-grab active:cursor-grabbing mr-1.5">
             <GripVertical className="w-5 h-5 text-gray-400" />
           </div>
 
@@ -55,10 +61,10 @@ export function KanbanCard({ ticket, onEdit, onClick }: KanbanCardProps) {
           <div className="flex-1 cursor-pointer" onClick={handleCardClick}>
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <h4 className="font-medium text-gray-900 mb-1">{ticket.title}</h4>
-                <p className="text-sm text-gray-600 mb-2">{ticket.description}</p>
+                <h4 className="font-medium text-gray-900 mb-0.5">{ticket.title}</h4>
+                <p className="text-sm text-gray-600 mb-1">{ticket.description}</p>
                 {ticket.codeContext && (
-                  <div className="flex items-center text-xs text-blue-600 mb-2">
+                  <div className="flex items-center text-xs text-blue-600 mb-1">
                     <CodeIcon className="w-3 h-3 mr-1" />
                     {ticket.codeContext}
                   </div>
@@ -81,14 +87,14 @@ export function KanbanCard({ ticket, onEdit, onClick }: KanbanCardProps) {
             </div>
 
             {ticket.isAnalyzing && (
-              <div className="mt-3 flex items-center text-blue-600 text-sm">
+              <div className="mt-2 flex items-center text-blue-600 text-sm">
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Đang phân tích...
               </div>
             )}
 
             {ticket.analysisResult && !ticket.isAnalyzing && (
-              <Badge variant="success" className="mt-3">
+              <Badge success className="mt-2">
                 ✅ Đã phân tích
               </Badge>
             )}

@@ -38,7 +38,7 @@ export function KanbanColumn({
         items={tickets.map(ticket => ticket.id)} 
         strategy={verticalListSortingStrategy}
       >
-        <div ref={setNodeRef} className="space-y-3">
+        <div ref={setNodeRef} className="space-y-2">
           {tickets.map(ticket => (
             <KanbanCard
               key={ticket.id}

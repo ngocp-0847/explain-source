@@ -97,5 +97,14 @@ export const ticketApi = {
     if (!res.ok) throw new Error('Failed to get ticket logs');
     return res.json();
   },
+
+  stopAnalysis: async (ticketId: string) => {
+    const res = await fetch(`${API_BASE}/tickets/${ticketId}/stop-analysis`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) throw new Error('Failed to stop analysis');
+    return res.json();
+  },
 };
 
