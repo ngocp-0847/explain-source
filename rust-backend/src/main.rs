@@ -10,20 +10,23 @@ use tokio::{sync::{broadcast, Mutex}, task::AbortHandle};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+mod agent_factory;
 mod api_handlers;
+mod code_agent;
 mod cursor_agent;
 mod database;
+mod gemini_agent;
 mod log_normalizer;
 mod message_store;
 mod websocket_handler;
 
-use cursor_agent::CursorAgent;
+use code_agent::CodeAgent;
 use database::Database;
 use message_store::MsgStore;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppState {
-    pub cursor_agent: Arc<CursorAgent>,
+    pub code_agent: Arc<dyn CodeAgent>,
     pub broadcast_tx: broadcast::Sender<BroadcastMessage>,
     pub database: Arc<Database>,
     pub msg_store: Arc<MsgStore>,
@@ -38,24 +41,14 @@ pub struct BroadcastMessage {
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodeAnalysisRequest {
-    pub ticket_id: String,
-    pub code_context: String,
-    pub question: String,
-    pub project_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CodeAnalysisResponse {
-    pub ticket_id: String,
-    pub result: String,
-    pub logs: Vec<String>,
-    pub success: bool,
-}
+// Re-export for backward compatibility
+pub use code_agent::{CodeAnalysisRequest, CodeAnalysisResponse};
 
 #[tokio::main]
 async fn main() {
+    // Load .env file if it exists
+    dotenv::dotenv().ok();
+
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
@@ -97,24 +90,14 @@ async fn main() {
     // Initialize broadcast channel for legacy messages
     let (broadcast_tx, _broadcast_rx) = broadcast::channel(1000);
 
-    // Initialize Cursor Agent with config from environment
-    let cursor_config = cursor_agent::CursorAgentConfig::from_env();
-    info!("🔧 Cursor Agent config:");
-    info!("  - Executable: {}", cursor_config.executable_path);
-    info!("  - Timeout: {}s", cursor_config.timeout_seconds);
-    info!("  - Retries: {}", cursor_config.max_retries);
-    info!("  - Output format: {:?}", cursor_config.output_format);
-    if cursor_config.api_key.is_some() {
-        info!("  - API key: [SET]");
-    }
-    
-    let cursor_agent = Arc::new(CursorAgent::with_config(cursor_config));
+    // Initialize code analysis agent from environment
+    let code_agent = agent_factory::create_agent_from_env();
 
-    info!("✅ Cursor Agent initialized");
+    info!("✅ Code analysis agent initialized");
 
     // Create app state
     let app_state = AppState {
-        cursor_agent,
+        code_agent,
         broadcast_tx,
         database,
         msg_store,
@@ -130,9 +113,9 @@ async fn main() {
         .route("/api/projects", get(api_handlers::list_projects).post(api_handlers::create_project))
         .route("/api/projects/:id", get(api_handlers::get_project).put(api_handlers::update_project).delete(api_handlers::delete_project))
         .route("/api/projects/:project_id/tickets", get(api_handlers::list_tickets).post(api_handlers::create_ticket))
+        .route("/api/tickets/:id/stop-analysis", post(api_handlers::stop_analysis))
         .route("/api/tickets/:id/status", put(api_handlers::update_ticket_status))
         .route("/api/tickets/:id/logs", get(api_handlers::get_ticket_logs))
-        .route("/api/tickets/:id/stop-analysis", post(api_handlers::stop_analysis))
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 

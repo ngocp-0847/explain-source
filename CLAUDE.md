@@ -71,21 +71,104 @@ npm run rust:build
 # Or: cd rust-backend && cargo build --release
 ```
 
+### Agent Configuration
+
+The backend supports multiple code analysis agents configured via `.env` file.
+
+#### Quick Setup (Recommended)
+
+**First-time setup:**
+```bash
+# 1. Navigate to backend directory
+cd rust-backend
+
+# 2. Copy environment template
+cp .env.example .env
+
+# 3. Edit .env file with your preferred settings
+nano .env  # or use your preferred editor
+
+# 4. Run the backend (configuration auto-loaded)
+cargo run
+```
+
+The `.env` file contains all configuration in one place - no need to remember or type environment variables!
+
+#### Agent Selection
+
+Edit `AGENT_TYPE` in `rust-backend/.env`:
+```bash
+# Choose your agent (default: gemini)
+AGENT_TYPE=gemini  # Use Gemini CLI
+# or
+AGENT_TYPE=cursor  # Use Cursor Agent
+```
+
+#### Available Configuration Options
+
+All options can be set in `rust-backend/.env` file. See `.env.example` for full documentation.
+
+**Gemini CLI Configuration:**
+- `GEMINI_AGENT_PATH`: Path to gemini executable (default: `"gemini"`)
+- `GEMINI_AGENT_TIMEOUT`: Timeout in seconds (default: `300`)
+- `GEMINI_AGENT_MAX_RETRIES`: Maximum retry attempts (default: `2`)
+- `GEMINI_AGENT_WORKING_DIR`: Working directory for analysis (optional)
+- `GEMINI_AGENT_OUTPUT_FORMAT`: Output format (default: `stream-json`)
+- `GEMINI_API_KEY`: API key for Gemini (optional)
+
+**Cursor Agent Configuration:**
+- `CURSOR_AGENT_PATH`: Path to cursor-agent executable (default: `"cursor-agent"`)
+- `CURSOR_AGENT_TIMEOUT`: Timeout in seconds (default: `300`)
+- `CURSOR_AGENT_MAX_RETRIES`: Maximum retry attempts (default: `2`)
+- `CURSOR_AGENT_WORKING_DIR`: Working directory for analysis (optional)
+- `CURSOR_AGENT_OUTPUT_FORMAT`: Output format (default: `stream-json`)
+- `CURSOR_API_KEY`: API key for Cursor (optional)
+
+#### Gemini CLI Setup
+
+Before using Gemini CLI, complete Google OAuth authentication:
+```bash
+# 1. Install Gemini CLI
+npm install -g @google/generative-ai-cli
+
+# 2. Login interactively (one-time setup)
+gemini
+
+# 3. Complete OAuth in browser
+# 4. After successful login, backend can use Gemini non-interactively
+```
+
+#### Advanced: Override Configuration
+
+You can still override `.env` values with command-line environment variables:
+```bash
+# Temporarily use Cursor Agent (without editing .env)
+AGENT_TYPE=cursor cargo run
+
+# Override timeout for this run only
+GEMINI_AGENT_TIMEOUT=600 cargo run
+```
+
+**Priority:** CLI env vars > `.env` file > default values
+
 ### Running the Full Stack
 **Required**: Both frontend and backend must run simultaneously.
 
 ```bash
-# Terminal 1: Start Rust backend
-cd rust-backend && cargo run
+# Terminal 1: Start Rust backend (config auto-loaded from .env)
+cd rust-backend
+cargo run
 
 # Terminal 2: Start Next.js frontend
 npm run dev
 ```
 
+**Note:** Agent selection and all configuration is controlled via `rust-backend/.env` file. No need to set environment variables manually!
+
 Access points:
 - Frontend: http://localhost:3010
-- Backend API: http://localhost:8080
-- WebSocket: ws://localhost:8080/ws
+- Backend API: http://localhost:9000
+- WebSocket: ws://localhost:9000/ws
 
 ## Architecture Details
 

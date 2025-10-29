@@ -131,15 +131,16 @@ async fn handle_client_message(
             }
 
             // Spawn analysis in background
-            let cursor_agent = state.cursor_agent.clone();
+            let code_agent = state.code_agent.clone();
             let msg_store = state.msg_store.clone();
             let database = state.database.clone();
             let broadcast_tx = state.broadcast_tx.clone();
             let running_tasks = state.running_tasks.clone();
             let ticket_id = request.ticket_id.clone();
+            let ticket_id_for_cleanup = ticket_id.clone();
 
             let handle = tokio::spawn(async move {
-                match cursor_agent
+                match code_agent
                     .analyze_code(request.clone(), msg_store.clone(), database.clone())
                     .await
                 {
@@ -166,16 +167,16 @@ async fn handle_client_message(
                         });
                     }
                 }
-                
+
                 // Clean up task handle when analysis completes
                 let mut tasks = running_tasks.lock().await;
-                tasks.remove(&ticket_id);
+                tasks.remove(&ticket_id_for_cleanup);
             });
 
             // Store abort handle for cancellation
             {
                 let mut tasks = state.running_tasks.lock().await;
-                tasks.insert(ticket_id.clone(), handle.abort_handle());
+                tasks.insert(ticket_id, handle.abort_handle());
             }
         }
 

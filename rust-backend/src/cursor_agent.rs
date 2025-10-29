@@ -1,13 +1,14 @@
+use crate::code_agent::{CodeAgent, CodeAnalysisRequest, CodeAnalysisResponse};
 use crate::database::Database;
 use crate::log_normalizer::LogNormalizer;
 use crate::message_store::MsgStore;
-use crate::{CodeAnalysisRequest, CodeAnalysisResponse};
 use anyhow::Result;
+use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::time::{Duration, timeout};
-use tracing::{error, info, warn, debug};
+use tokio::time::{timeout, Duration};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CursorAgentError {
@@ -469,5 +470,19 @@ impl CursorAgent {
                 request.code_context, request.question
             )
         }
+    }
+}
+
+// Implement CodeAgent trait for CursorAgent
+#[async_trait]
+impl CodeAgent for CursorAgent {
+    async fn analyze_code(
+        &self,
+        request: CodeAnalysisRequest,
+        msg_store: Arc<MsgStore>,
+        database: Arc<Database>,
+    ) -> Result<CodeAnalysisResponse> {
+        // Delegate to existing implementation
+        self.analyze_code(request, msg_store, database).await
     }
 }
