@@ -92,10 +92,6 @@ pub struct CursorAgent {
 }
 
 impl CursorAgent {
-    pub fn new() -> Self {
-        Self::with_config(CursorAgentConfig::from_env())
-    }
-
     pub fn with_config(config: CursorAgentConfig) -> Self {
         Self { config }
     }

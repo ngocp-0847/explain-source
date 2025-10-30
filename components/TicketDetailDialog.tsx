@@ -146,13 +146,6 @@ export function TicketDetailDialog({ onStartAnalysis, onStopAnalysis }: TicketDe
                 )}
               </div>
             </ScrollArea>
-
-            {/* Footer */}
-            <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">
-              <Button variant="outline" onClick={onClose}>
-                Đóng
-              </Button>
-            </div>
           </div>
         </div>
       )}

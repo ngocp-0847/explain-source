@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::{sync::{broadcast, Mutex}, task::AbortHandle};
 use tower_http::cors::CorsLayer;
-use tracing::info;
+use tracing::{info, warn};
 
 mod agent_factory;
 mod api_handlers;
@@ -47,7 +47,45 @@ pub use code_agent::{CodeAnalysisRequest, CodeAnalysisResponse};
 #[tokio::main]
 async fn main() {
     // Load .env file if it exists
-    dotenv::dotenv().ok();
+    // Try to load from rust-backend/.env first (relative to current directory)
+    // Then fallback to .env in current directory
+    let env_paths = [
+        "rust-backend/.env",
+        ".env",
+    ];
+    
+    let mut env_loaded = false;
+    for path in &env_paths {
+        match dotenv::from_path(path) {
+            Ok(_) => {
+                // File loaded successfully
+                info!("📄 Loaded .env file from: {}", path);
+                env_loaded = true;
+                break;
+            }
+            Err(dotenv::Error::Io(_)) => {
+                // File doesn't exist, try next path
+                continue;
+            }
+            Err(e) => {
+                // Other error (e.g., parsing error)
+                warn!("⚠️ Error loading .env from {}: {}, trying next path", path, e);
+                continue;
+            }
+        }
+    }
+    
+    if !env_loaded {
+        // Try default dotenv behavior (searches parent directories)
+        match dotenv::dotenv() {
+            Ok(_) => {
+                info!("📄 Loaded .env file from default location");
+            }
+            Err(_) => {
+                info!("⚠️ No .env file found, using environment variables only");
+            }
+        }
+    }
 
     // Initialize tracing
     tracing_subscriber::fmt::init();

@@ -1,5 +1,6 @@
 use crate::message_store::{LogMessageType, StructuredLogEntry};
 use regex::Regex;
+use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -29,9 +30,17 @@ impl LogNormalizer {
     }
 
     pub fn normalize(&self, raw_log: String, ticket_id: String) -> StructuredLogEntry {
-        let message_type = self.classify(&raw_log);
-        let content = self.clean_content(&raw_log, &message_type);
-        let metadata = self.extract_metadata(&raw_log, &message_type);
+        // Check if this is a JSON log (from Gemini CLI or Cursor Agent)
+        let (message_type, content, metadata) = if let Ok(json_value) = serde_json::from_str::<Value>(&raw_log) {
+            // This is a JSON log, parse it
+            self.normalize_json_log(json_value, &raw_log)
+        } else {
+            // Plain text log, use existing logic
+            let message_type = self.classify(&raw_log);
+            let content = self.clean_content(&raw_log, &message_type);
+            let metadata = self.extract_metadata(&raw_log, &message_type);
+            (message_type, content, metadata)
+        };
 
         StructuredLogEntry {
             id: Uuid::new_v4().to_string(),
@@ -42,6 +51,49 @@ impl LogNormalizer {
             metadata,
             timestamp: chrono::Utc::now(),
         }
+    }
+
+    fn normalize_json_log(&self, json_value: Value, raw_log: &str) -> (LogMessageType, String, HashMap<String, String>) {
+        let mut metadata = HashMap::new();
+        
+        // Extract type and role from JSON
+        let msg_type = json_value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let role = json_value.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        
+        // Classify based on JSON structure
+        let message_type = match (msg_type, role) {
+            ("message", "assistant") => LogMessageType::Assistant,
+            ("message", "user") => LogMessageType::System,
+            ("tool_use", _) => LogMessageType::ToolUse,
+            ("tool_result", _) => LogMessageType::System,
+            ("init", _) => LogMessageType::System,
+            ("error", _) | (_, _) if json_value.get("error").is_some() 
+                || json_value.get("status").and_then(|v| v.as_str()) == Some("error") => LogMessageType::Error,
+            _ => LogMessageType::System,
+        };
+
+        // Extract metadata from JSON
+        if let Some(tool_name) = json_value.get("tool_name").and_then(|v| v.as_str()) {
+            metadata.insert("tool_name".to_string(), tool_name.to_string());
+        }
+        if let Some(tool_id) = json_value.get("tool_id").and_then(|v| v.as_str()) {
+            metadata.insert("tool_id".to_string(), tool_id.to_string());
+        }
+        if let Some(timestamp) = json_value.get("timestamp").and_then(|v| v.as_str()) {
+            metadata.insert("timestamp".to_string(), timestamp.to_string());
+        }
+        if let Some(session_id) = json_value.get("session_id").and_then(|v| v.as_str()) {
+            metadata.insert("session_id".to_string(), session_id.to_string());
+        }
+        if let Some(model) = json_value.get("model").and_then(|v| v.as_str()) {
+            metadata.insert("model".to_string(), model.to_string());
+        }
+
+        // Extract content - keep JSON structure intact for LogViewer to parse
+        // LogViewer expects: {type, role, content} or {content: [...]}
+        let content = raw_log.to_string(); // Keep original JSON string
+
+        (message_type, content, metadata)
     }
 
     fn classify(&self, log: &str) -> LogMessageType {

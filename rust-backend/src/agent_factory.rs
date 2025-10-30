@@ -2,7 +2,7 @@ use crate::code_agent::CodeAgent;
 use crate::cursor_agent::{CursorAgent, CursorAgentConfig};
 use crate::gemini_agent::{GeminiAgent, GeminiAgentConfig};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn, debug};
 
 /// Type of code analysis agent
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,12 +63,47 @@ pub fn create_agent(agent_type: AgentType) -> Arc<dyn CodeAgent> {
 /// Create a code agent from environment variables
 ///
 /// Reads the `AGENT_TYPE` environment variable to determine which agent to create.
-/// Defaults to Gemini if not specified or if the value is invalid.
+/// **Default: Gemini** - If `AGENT_TYPE` is not set, empty, or has an invalid value,
+/// the system will automatically use Gemini Agent as the default.
 pub fn create_agent_from_env() -> Arc<dyn CodeAgent> {
-    let agent_type = std::env::var("AGENT_TYPE")
-        .ok()
-        .and_then(|s| AgentType::from_str(&s))
-        .unwrap_or(AgentType::Gemini);
+    // Read AGENT_TYPE from environment
+    let agent_type_env = std::env::var("AGENT_TYPE").ok();
+    
+    // Debug: log the raw value from environment
+    match &agent_type_env {
+        Some(val) => {
+            debug!("📋 AGENT_TYPE environment variable: '{}'", val);
+        }
+        None => {
+            debug!("📋 AGENT_TYPE environment variable: not set");
+        }
+    }
+    
+    // Parse and determine agent type
+    let agent_type = agent_type_env
+        .as_ref()
+        .and_then(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                warn!("⚠️ AGENT_TYPE is set but empty, defaulting to Gemini");
+                None
+            } else {
+                AgentType::from_str(trimmed)
+            }
+        })
+        .or_else(|| {
+            // Log when falling back to default
+            match &agent_type_env {
+                Some(val) => {
+                    warn!("⚠️ Invalid AGENT_TYPE value '{}', defaulting to Gemini", val);
+                }
+                None => {
+                    info!("ℹ️ AGENT_TYPE not specified, using default: Gemini");
+                }
+            }
+            Some(AgentType::Gemini)
+        })
+        .unwrap_or(AgentType::Gemini); // Final fallback (should never reach here)
 
     info!("🤖 Selected code analysis agent: {}", agent_type.name());
 
