@@ -12,6 +12,7 @@ pub struct CodeAnalysisRequest {
     pub code_context: String,
     pub question: String,
     pub project_id: String,
+    pub mode: String, // "plan", "ask", or "edit"
 }
 
 /// Response from code analysis

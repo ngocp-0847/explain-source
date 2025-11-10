@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Ticket, TicketStatus, StructuredLog } from '@/types/ticket'
+import { Ticket, TicketStatus, StructuredLog, TicketMode } from '@/types/ticket'
 import { ticketApi } from '@/lib/api'
 
 interface TicketPaginationState {
@@ -167,6 +167,7 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
       codeContext: ticket.codeContext || '',
       question: ticket.description,
       projectId: ticket.projectId,
+      mode: ticket.mode || 'ask',
     }
 
     sendMessage(message)

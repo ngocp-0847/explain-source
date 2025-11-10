@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { Ticket } from '@/types/ticket'
 import { X, CodeIcon, Play, FileText, Square } from 'lucide-react'
 import { LogViewer } from './LogViewer'
+import { PlanEditor } from './PlanEditor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -129,6 +130,22 @@ export function TicketDetailDialog({ onStartAnalysis, onStopAnalysis }: TicketDe
                     <LogViewer logs={ticket.logs} isAnalyzing={ticket.isAnalyzing} ticketId={ticket.id} />
                   </div>
                 </section>
+
+                {/* Plan Editor - Show for 'plan' mode tickets */}
+                {ticket.mode === 'plan' && (
+                  <section>
+                    <PlanEditor
+                      ticketId={ticket.id}
+                      planContent={ticket.planContent}
+                      requiredApprovals={ticket.requiredApprovals}
+                      onPlanUpdate={(content) => {
+                        useTicketStore.getState().updateTicket(ticket.id, {
+                          planContent: content,
+                        })
+                      }}
+                    />
+                  </section>
+                )}
 
                 {/* Analysis Result */}
                 {ticket.analysisResult && (

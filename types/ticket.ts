@@ -1,5 +1,7 @@
 export type TicketStatus = 'todo' | 'in-progress' | 'done'
 
+export type TicketMode = 'plan' | 'ask' | 'edit'
+
 export type LogMessageType = 'tool_use' | 'assistant' | 'error' | 'system' | 'result'
 
 export interface Project {
@@ -33,6 +35,10 @@ export interface Ticket {
   analysisResult?: string
   isAnalyzing: boolean
   logs: StructuredLog[]
+  mode: TicketMode
+  planContent?: string
+  planCreatedAt?: Date
+  requiredApprovals: number
 }
 
 export interface CodeAnalysis {

@@ -121,6 +121,10 @@ impl CursorAgent {
                 is_analyzing: true,
                 created_at: chrono::Utc::now().to_rfc3339(),
                 updated_at: chrono::Utc::now().to_rfc3339(),
+                mode: request.mode.clone(),
+                plan_content: None,
+                plan_created_at: None,
+                required_approvals: 2,
             };
             
             database.create_ticket(&auto_ticket).await?;

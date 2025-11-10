@@ -13,8 +13,9 @@ import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { ticketFormSchema, TicketFormValues } from '@/schemas/ticketSchema'
-import { Ticket, TicketStatus } from '@/types/ticket'
+import { Ticket, TicketStatus, TicketMode } from '@/types/ticket'
 import { ticketApi } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export function TicketFormDialog() {
   const { isOpen, onClose, selectedTicket, setSelectedTicket } = useUIStore(state => ({
@@ -35,6 +36,7 @@ export function TicketFormDialog() {
       title: '',
       description: '',
       codeContext: '',
+      mode: 'ask',
     },
   })
 
@@ -44,12 +46,14 @@ export function TicketFormDialog() {
         title: selectedTicket.title,
         description: selectedTicket.description,
         codeContext: selectedTicket.codeContext || '',
+        mode: selectedTicket.mode || 'ask',
       })
     } else {
       form.reset({
         title: '',
         description: '',
         codeContext: '',
+        mode: 'ask',
       })
     }
   }, [selectedTicket, form])
@@ -85,6 +89,8 @@ export function TicketFormDialog() {
           description: data.description,
           status: 'todo',
           code_context: data.codeContext || undefined,
+          mode: data.mode,
+          required_approvals: 2,
         })
         
         // Add to local store with proper mapping
@@ -100,6 +106,10 @@ export function TicketFormDialog() {
           analysisResult: createdTicket.analysis_result || undefined,
           isAnalyzing: createdTicket.is_analyzing,
           logs: [], // Initialize empty logs array
+          mode: (createdTicket.mode || 'ask') as TicketMode,
+          planContent: createdTicket.plan_content,
+          planCreatedAt: createdTicket.plan_created_at ? new Date(createdTicket.plan_created_at) : undefined,
+          requiredApprovals: createdTicket.required_approvals || 2,
         })
         
         console.log('✅ Ticket created successfully via REST API:', createdTicket.id)
@@ -157,6 +167,26 @@ export function TicketFormDialog() {
             />
             <p className="text-xs text-gray-500">
               Đường dẫn file hoặc module code liên quan
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="mode">Mode *</Label>
+            <Select
+              value={form.watch('mode')}
+              onValueChange={(value) => form.setValue('mode', value as 'plan' | 'ask' | 'edit')}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Chọn mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ask">Ask - Chỉ hỏi về code</SelectItem>
+                <SelectItem value="plan">Plan - Tạo plan trước khi implement</SelectItem>
+                <SelectItem value="edit">Edit - Implement/sửa code ngay</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500">
+              Ask: Agent chỉ trả lời câu hỏi | Plan: Agent tạo plan cần approval | Edit: Agent implement code ngay
             </p>
           </div>
 

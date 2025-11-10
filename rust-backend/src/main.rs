@@ -12,11 +12,13 @@ use tracing::{info, warn};
 
 mod agent_factory;
 mod api_handlers;
+mod auth_middleware;
 mod claude_agent;
 mod code_agent;
 mod cursor_agent;
 mod database;
 mod gemini_agent;
+mod jwt;
 mod log_normalizer;
 mod message_store;
 mod websocket_handler;
@@ -149,12 +151,23 @@ async fn main() {
     let app = Router::new()
         .route("/", get(health_check))
         .route("/ws", get(websocket_handler))
+        // Public auth routes
+        .route("/api/auth/register", post(api_handlers::register))
+        .route("/api/auth/login", post(api_handlers::login))
+        // Public project routes (for now, can add auth later)
         .route("/api/projects", get(api_handlers::list_projects).post(api_handlers::create_project))
         .route("/api/projects/:id", get(api_handlers::get_project).put(api_handlers::update_project).delete(api_handlers::delete_project))
         .route("/api/projects/:project_id/tickets", get(api_handlers::list_tickets).post(api_handlers::create_ticket))
         .route("/api/tickets/:id/stop-analysis", post(api_handlers::stop_analysis))
         .route("/api/tickets/:id/status", put(api_handlers::update_ticket_status))
         .route("/api/tickets/:id/logs", get(api_handlers::get_ticket_logs))
+        // Protected auth routes
+        .route("/api/auth/me", get(api_handlers::get_me))
+        // Protected plan routes
+        .route("/api/tickets/:id/plan", put(api_handlers::update_plan))
+        .route("/api/tickets/:id/plan/history", get(api_handlers::get_plan_history))
+        .route("/api/tickets/:id/plan/approve", post(api_handlers::approve_plan))
+        .route("/api/tickets/:id/plan/approvals", get(api_handlers::get_plan_approvals))
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 

@@ -107,6 +107,10 @@ async fn handle_client_message(
                     .as_str()
                     .unwrap_or("")
                     .to_string(),
+                mode: message["mode"]
+                    .as_str()
+                    .unwrap_or("ask")
+                    .to_string(),
             };
 
             info!(
@@ -357,6 +361,10 @@ async fn handle_client_message(
                 is_analyzing: false,
                 created_at: chrono::Utc::now().to_rfc3339(),
                 updated_at: chrono::Utc::now().to_rfc3339(),
+                mode: message["mode"].as_str().unwrap_or("ask").to_string(),
+                plan_content: None,
+                plan_created_at: None,
+                required_approvals: 2,
             };
 
             match state.database.create_ticket(&ticket).await {

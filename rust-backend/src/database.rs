@@ -25,6 +25,20 @@ pub struct TicketRecord {
     pub is_analyzing: bool,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    pub plan_content: Option<String>,
+    pub plan_created_at: Option<String>,
+    #[serde(default = "default_approvals")]
+    pub required_approvals: i32,
+}
+
+fn default_mode() -> String {
+    "ask".to_string()
+}
+
+fn default_approvals() -> i32 {
+    2
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +60,33 @@ pub struct AnalysisSession {
     pub completed_at: Option<String>,
     pub status: String,
     pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserRecord {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PlanEdit {
+    pub id: String,
+    pub ticket_id: String,
+    pub user_id: String,
+    pub content_before: Option<String>,
+    pub content_after: Option<String>,
+    pub edited_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PlanApproval {
+    pub id: String,
+    pub ticket_id: String,
+    pub user_id: String,
+    pub approved_at: String,
+    pub status: String,
 }
 
 #[derive(Debug)]
@@ -252,8 +293,8 @@ impl Database {
     pub async fn create_ticket(&self, ticket: &TicketRecord) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO tickets (id, project_id, title, description, status, code_context, analysis_result, is_analyzing, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            INSERT INTO tickets (id, project_id, title, description, status, code_context, analysis_result, is_analyzing, created_at, updated_at, mode, required_approvals)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
         )
         .bind(&ticket.id)
@@ -266,6 +307,8 @@ impl Database {
         .bind(ticket.is_analyzing)
         .bind(&ticket.created_at)
         .bind(&ticket.updated_at)
+        .bind(&ticket.mode)
+        .bind(ticket.required_approvals)
         .execute(&self.pool)
         .await?;
 
@@ -277,8 +320,8 @@ impl Database {
             r#"
             UPDATE tickets
             SET project_id = ?1, title = ?2, description = ?3, status = ?4, code_context = ?5,
-                analysis_result = ?6, is_analyzing = ?7, updated_at = ?8
-            WHERE id = ?9
+                analysis_result = ?6, is_analyzing = ?7, updated_at = ?8, mode = ?9, required_approvals = ?10
+            WHERE id = ?11
             "#,
         )
         .bind(&ticket.project_id)
@@ -289,6 +332,8 @@ impl Database {
         .bind(&ticket.analysis_result)
         .bind(ticket.is_analyzing)
         .bind(&ticket.updated_at)
+        .bind(&ticket.mode)
+        .bind(ticket.required_approvals)
         .bind(&ticket.id)
         .execute(&self.pool)
         .await?;
@@ -663,6 +708,171 @@ impl Database {
                 .await?;
         }
 
+        // Run 003_add_auth_and_plans if not applied
+        let migration_name_003 = "003_add_auth_and_plans";
+        let exists_003 = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM migrations WHERE name = ?1"
+        )
+        .bind(migration_name_003)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if exists_003 == 0 {
+            // Read migration SQL file
+            let migration_sql = include_str!("../migrations/003_add_auth_and_plans.sql");
+            
+            // Execute migration SQL
+            sqlx::query(migration_sql)
+                .execute(&self.pool)
+                .await?;
+            
+            // Mark as applied
+            sqlx::query("INSERT INTO migrations (name, applied_at) VALUES (?1, ?2)")
+                .bind(migration_name_003)
+                .bind(chrono::Utc::now().to_rfc3339())
+                .execute(&self.pool)
+                .await?;
+        }
+
         Ok(())
+    }
+
+    // User CRUD operations
+    pub async fn create_user(&self, user: &UserRecord) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, password_hash, created_at)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+        )
+        .bind(&user.id)
+        .bind(&user.username)
+        .bind(&user.password_hash)
+        .bind(&user.created_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_user_by_id(&self, id: &str) -> Result<Option<UserRecord>> {
+        let user = sqlx::query_as::<_, UserRecord>(
+            "SELECT * FROM users WHERE id = ?1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<UserRecord>> {
+        let user = sqlx::query_as::<_, UserRecord>(
+            "SELECT * FROM users WHERE username = ?1"
+        )
+        .bind(username)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    // Plan collaboration operations
+    pub async fn update_plan_content(&self, ticket_id: &str, user_id: &str, content: &str) -> Result<()> {
+        // Get current plan content for history
+        let current_content = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT plan_content FROM tickets WHERE id = ?1"
+        )
+        .bind(ticket_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Create edit record
+        let edit_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO plan_edits (id, ticket_id, user_id, content_before, content_after, edited_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(&edit_id)
+        .bind(ticket_id)
+        .bind(user_id)
+        .bind(&current_content)
+        .bind(content)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        // Update ticket plan content
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE tickets
+            SET plan_content = ?1, plan_created_at = ?2, updated_at = ?3
+            WHERE id = ?4
+            "#,
+        )
+        .bind(content)
+        .bind(&now)
+        .bind(&now)
+        .bind(ticket_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_plan_edits(&self, ticket_id: &str) -> Result<Vec<PlanEdit>> {
+        let edits = sqlx::query_as::<_, PlanEdit>(
+            "SELECT * FROM plan_edits WHERE ticket_id = ?1 ORDER BY edited_at DESC"
+        )
+        .bind(ticket_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(edits)
+    }
+
+    pub async fn approve_plan(&self, ticket_id: &str, user_id: &str, status: &str) -> Result<()> {
+        let approval_id = uuid::Uuid::new_v4().to_string();
+        
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO plan_approvals (id, ticket_id, user_id, approved_at, status)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(&approval_id)
+        .bind(ticket_id)
+        .bind(user_id)
+        .bind(Utc::now().to_rfc3339())
+        .bind(status)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_plan_approvals(&self, ticket_id: &str) -> Result<Vec<PlanApproval>> {
+        let approvals = sqlx::query_as::<_, PlanApproval>(
+            "SELECT * FROM plan_approvals WHERE ticket_id = ?1"
+        )
+        .bind(ticket_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(approvals)
+    }
+
+    pub async fn count_plan_approvals(&self, ticket_id: &str) -> Result<i64> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM plan_approvals WHERE ticket_id = ?1 AND status = 'approved'"
+        )
+        .bind(ticket_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count)
     }
 }

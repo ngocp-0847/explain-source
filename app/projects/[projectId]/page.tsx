@@ -116,6 +116,10 @@ export default function ProjectDetailPage() {
           analysisResult: t.analysis_result,
           isAnalyzing: t.is_analyzing,
           logs: [], // Khởi tạo empty array
+          mode: t.mode || 'ask',
+          planContent: t.plan_content,
+          planCreatedAt: t.plan_created_at ? new Date(t.plan_created_at) : undefined,
+          requiredApprovals: t.required_approvals || 2,
         })))
       } catch (error) {
         console.error('Failed to load tickets:', error)
@@ -169,6 +173,29 @@ export default function ProjectDetailPage() {
         case 'code-analysis-error':
           const errorMsg = data as CodeAnalysisErrorMessage
           setTicketAnalyzing(errorMsg.ticket_id, false)
+          break
+
+        case 'plan-updated':
+          console.log('📝 Plan updated:', data)
+          // Update plan content in ticket store
+          if (data.ticket_id && data.content) {
+            useTicketStore.getState().updateTicket(data.ticket_id, {
+              planContent: data.content,
+            })
+          }
+          break
+
+        case 'plan-approved':
+          console.log('👍 Plan approved:', data)
+          // Could show a notification here
+          break
+
+        case 'auto-implement-started':
+          console.log('🚀 Auto-implementation started:', data)
+          // Could show a notification that implementation is starting
+          if (data.ticket_id) {
+            setTicketAnalyzing(data.ticket_id, true)
+          }
           break
       }
     })

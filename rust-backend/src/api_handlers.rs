@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tracing::{error, info, warn};
 
-use crate::database::{ProjectRecord, StructuredLogRecord, TicketRecord};
+use crate::database::{ProjectRecord, StructuredLogRecord, TicketRecord, UserRecord, PlanEdit, PlanApproval};
+use crate::jwt::{self, JwtConfig, Claims};
 use crate::AppState;
 
 // Request/Response types
@@ -32,6 +33,18 @@ pub struct CreateTicketRequest {
     pub description: String,
     pub status: String,
     pub code_context: Option<String>,
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    #[serde(default = "default_required_approvals")]
+    pub required_approvals: i32,
+}
+
+fn default_mode() -> String {
+    "ask".to_string()
+}
+
+fn default_required_approvals() -> i32 {
+    2
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,6 +193,10 @@ pub async fn create_ticket(
         is_analyzing: false,
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+        mode: data.mode,
+        plan_content: None,
+        plan_created_at: None,
+        required_approvals: data.required_approvals,
     };
 
     match state.database.create_ticket(&ticket).await {
@@ -344,3 +361,322 @@ pub async fn stop_analysis(
     })))
 }
 
+// Authentication endpoints
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthResponse {
+    pub token: String,
+    pub user: UserInfo,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserInfo {
+    pub id: String,
+    pub username: String,
+}
+
+pub async fn register(
+    State(state): State<AppState>,
+    Json(payload): Json<RegisterRequest>,
+) -> Result<Json<AuthResponse>, (StatusCode, Json<Value>)> {
+    info!("📝 Registration attempt for username: {}", payload.username);
+
+    // Check if username already exists
+    match state.database.get_user_by_username(&payload.username).await {
+        Ok(Some(_)) => {
+            warn!("⚠️ Username already exists: {}", payload.username);
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({ "error": "Username already exists" })),
+            ));
+        }
+        Ok(None) => {}
+        Err(e) => {
+            error!("❌ Database error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            ));
+        }
+    }
+
+    // Hash password
+    let password_hash = match bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST) {
+        Ok(hash) => hash,
+        Err(e) => {
+            error!("❌ Password hashing error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            ));
+        }
+    };
+
+    // Create user record
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let user = UserRecord {
+        id: user_id.clone(),
+        username: payload.username.clone(),
+        password_hash,
+        created_at: Utc::now().to_rfc3339(),
+    };
+
+    // Save to database
+    if let Err(e) = state.database.create_user(&user).await {
+        error!("❌ Failed to create user: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to create user" })),
+        ));
+    }
+
+    // Generate JWT token
+    let jwt_config = JwtConfig::default();
+    let token = match jwt::generate_token(&user_id, &payload.username, &jwt_config) {
+        Ok(token) => token,
+        Err(e) => {
+            error!("❌ Failed to generate token: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to generate token" })),
+            ));
+        }
+    };
+
+    info!("✅ User registered successfully: {}", payload.username);
+
+    Ok(Json(AuthResponse {
+        token,
+        user: UserInfo {
+            id: user_id,
+            username: payload.username,
+        },
+    }))
+}
+
+pub async fn login(
+    State(state): State<AppState>,
+    Json(payload): Json<LoginRequest>,
+) -> Result<Json<AuthResponse>, (StatusCode, Json<Value>)> {
+    info!("🔐 Login attempt for username: {}", payload.username);
+
+    // Get user from database
+    let user = match state.database.get_user_by_username(&payload.username).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            warn!("⚠️ User not found: {}", payload.username);
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "error": "Invalid credentials" })),
+            ));
+        }
+        Err(e) => {
+            error!("❌ Database error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            ));
+        }
+    };
+
+    // Verify password
+    let password_valid = match bcrypt::verify(&payload.password, &user.password_hash) {
+        Ok(valid) => valid,
+        Err(e) => {
+            error!("❌ Password verification error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            ));
+        }
+    };
+
+    if !password_valid {
+        warn!("⚠️ Invalid password for user: {}", payload.username);
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid credentials" })),
+        ));
+    }
+
+    // Generate JWT token
+    let jwt_config = JwtConfig::default();
+    let token = match jwt::generate_token(&user.id, &user.username, &jwt_config) {
+        Ok(token) => token,
+        Err(e) => {
+            error!("❌ Failed to generate token: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to generate token" })),
+            ));
+        }
+    };
+
+    info!("✅ User logged in successfully: {}", payload.username);
+
+    Ok(Json(AuthResponse {
+        token,
+        user: UserInfo {
+            id: user.id,
+            username: user.username,
+        },
+    }))
+}
+
+pub async fn get_me(
+    claims: Claims,
+    State(state): State<AppState>,
+) -> Result<Json<UserInfo>, (StatusCode, Json<Value>)> {
+    // Get user from database to ensure they still exist
+    match state.database.get_user_by_id(&claims.sub).await {
+        Ok(Some(user)) => Ok(Json(UserInfo {
+            id: user.id,
+            username: user.username,
+        })),
+        Ok(None) => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "User not found" })),
+        )),
+        Err(e) => {
+            error!("❌ Database error: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            ))
+        }
+    }
+}
+
+// Plan collaboration endpoints
+#[derive(Debug, Deserialize)]
+pub struct UpdatePlanRequest {
+    pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApprovePlanRequest {
+    pub status: String, // "approved" or "rejected"
+}
+
+pub async fn update_plan(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdatePlanRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    info!("📝 User {} updating plan for ticket {}", claims.username, id);
+
+    match state.database.update_plan_content(&id, &claims.sub, &payload.content).await {
+        Ok(_) => {
+            // Broadcast plan update
+            let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                ticket_id: id.clone(),
+                message_type: "plan-updated".to_string(),
+                content: payload.content,
+                timestamp: Utc::now(),
+            });
+
+            Ok(Json(json!({ "success": true })))
+        }
+        Err(e) => {
+            error!("❌ Failed to update plan: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to update plan" })),
+            ))
+        }
+    }
+}
+
+pub async fn get_plan_history(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<PlanEdit>>, (StatusCode, Json<Value>)> {
+    match state.database.get_plan_edits(&id).await {
+        Ok(edits) => Ok(Json(edits)),
+        Err(e) => {
+            error!("❌ Failed to get plan history: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to get plan history" })),
+            ))
+        }
+    }
+}
+
+pub async fn approve_plan(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<ApprovePlanRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    info!("👍 User {} {} plan for ticket {}", claims.username, payload.status, id);
+
+    // Save approval
+    if let Err(e) = state.database.approve_plan(&id, &claims.sub, &payload.status).await {
+        error!("❌ Failed to approve plan: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to approve plan" })),
+        ));
+    }
+
+    // Check if we have enough approvals to auto-trigger
+    if payload.status == "approved" {
+        match state.database.get_ticket(&id).await {
+            Ok(Some(ticket)) => {
+                let approval_count = state.database.count_plan_approvals(&id).await.unwrap_or(0);
+                
+                if approval_count >= ticket.required_approvals as i64 {
+                    info!("🚀 Auto-triggering implementation for ticket {}", id);
+                    
+                    // Broadcast auto-implement event
+                    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+                        ticket_id: id.clone(),
+                        message_type: "auto-implement-started".to_string(),
+                        content: format!("Plan approved by {} users, starting implementation", approval_count),
+                        timestamp: Utc::now(),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Broadcast approval
+    let _ = state.broadcast_tx.send(crate::BroadcastMessage {
+        ticket_id: id.clone(),
+        message_type: "plan-approved".to_string(),
+        content: serde_json::to_string(&payload).unwrap_or_default(),
+        timestamp: Utc::now(),
+    });
+
+    Ok(Json(json!({ "success": true })))
+}
+
+pub async fn get_plan_approvals(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<PlanApproval>>, (StatusCode, Json<Value>)> {
+    match state.database.get_plan_approvals(&id).await {
+        Ok(approvals) => Ok(Json(approvals)),
+        Err(e) => {
+            error!("❌ Failed to get plan approvals: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to get plan approvals" })),
+            ))
+        }
+    }
+}

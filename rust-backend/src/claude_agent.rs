@@ -121,6 +121,10 @@ impl ClaudeAgent {
                 is_analyzing: true,
                 created_at: chrono::Utc::now().to_rfc3339(),
                 updated_at: chrono::Utc::now().to_rfc3339(),
+                mode: request.mode.clone(),
+                plan_content: None,
+                plan_created_at: None,
+                required_approvals: 2,
             };
             
             database.create_ticket(&auto_ticket).await?;
@@ -160,9 +164,12 @@ impl ClaudeAgent {
             None
         };
 
+        // Modify question based on mode
+        let modified_request = self.prepare_request_by_mode(&request)?;
+
         // Execute Claude Agent analysis
         let result = match self
-            .execute_claude_agent(&request, working_directory, &msg_store, &normalizer)
+            .execute_claude_agent(&modified_request, working_directory, &msg_store, &normalizer)
             .await
         {
             Ok(output) => {
@@ -211,6 +218,44 @@ impl ClaudeAgent {
             result,
             logs,
             success: true,
+        })
+    }
+
+    fn prepare_request_by_mode(&self, request: &CodeAnalysisRequest) -> Result<CodeAnalysisRequest> {
+        let modified_question = match request.mode.as_str() {
+            "plan" => {
+                format!(
+                    "{}\n\nIMPORTANT: Bạn đang ở MODE 'PLAN'. Nhiệm vụ của bạn là TẠO RA MỘT PLAN CHI TIẾT để implement yêu cầu này, KHÔNG ĐƯỢC implement code ngay. Plan nên bao gồm:\n\
+                    1. Phân tích requirements\n\
+                    2. Các bước cần thực hiện\n\
+                    3. Files/modules cần modify\n\
+                    4. Rủi ro và cân nhắc\n\
+                    5. Testing strategy\n\
+                    \n\
+                    Viết plan dưới dạng markdown, chi tiết và dễ hiểu.",
+                    request.question
+                )
+            }
+            "edit" => {
+                format!(
+                    "{}\n\nIMPORTANT: Bạn đang ở MODE 'EDIT'. Nhiệm vụ của bạn là IMPLEMENT/MODIFY CODE để thực hiện yêu cầu này. Hãy tạo/sửa các files cần thiết.",
+                    request.question
+                )
+            }
+            "ask" | _ => {
+                format!(
+                    "{}\n\nIMPORTANT: Bạn đang ở MODE 'ASK'. Nhiệm vụ của bạn là TRẢ LỜI câu hỏi về source code, KHÔNG ĐƯỢC modify/implement code. Chỉ giải thích và phân tích.",
+                    request.question
+                )
+            }
+        };
+
+        Ok(CodeAnalysisRequest {
+            ticket_id: request.ticket_id.clone(),
+            code_context: request.code_context.clone(),
+            question: modified_question,
+            project_id: request.project_id.clone(),
+            mode: request.mode.clone(),
         })
     }
 
