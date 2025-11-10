@@ -197,12 +197,6 @@ export default function ProjectDetailPage() {
       ticketId,
       status: newStatus
     })
-
-    if (newStatus === 'in-progress') {
-      setTimeout(() => {
-        startAnalysis(ticketId, send)
-      }, 150)
-    }
   }
 
   const handleEditTicket = (ticket: Ticket) => {
