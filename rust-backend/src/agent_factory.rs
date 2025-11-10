@@ -1,3 +1,4 @@
+use crate::claude_agent::{ClaudeAgent, ClaudeAgentConfig};
 use crate::code_agent::CodeAgent;
 use crate::cursor_agent::{CursorAgent, CursorAgentConfig};
 use crate::gemini_agent::{GeminiAgent, GeminiAgentConfig};
@@ -7,6 +8,7 @@ use tracing::{info, warn, debug};
 /// Type of code analysis agent
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentType {
+    Claude,
     Gemini,
     Cursor,
 }
@@ -15,6 +17,7 @@ impl AgentType {
     /// Parse agent type from string
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
+            "claude" => Some(Self::Claude),
             "gemini" => Some(Self::Gemini),
             "cursor" => Some(Self::Cursor),
             _ => None,
@@ -24,6 +27,7 @@ impl AgentType {
     /// Get agent type name
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Claude => "Claude Code",
             Self::Gemini => "Gemini CLI",
             Self::Cursor => "Cursor Agent",
         }
@@ -33,6 +37,18 @@ impl AgentType {
 /// Create a code agent based on the specified type
 pub fn create_agent(agent_type: AgentType) -> Arc<dyn CodeAgent> {
     match agent_type {
+        AgentType::Claude => {
+            let config = ClaudeAgentConfig::from_env();
+            info!("🔧 Creating Claude Code agent");
+            info!("  - Executable: {}", config.executable_path);
+            info!("  - Timeout: {}s", config.timeout_seconds);
+            info!("  - Retries: {}", config.max_retries);
+            info!("  - Output format: {:?}", config.output_format);
+            if config.api_key.is_some() {
+                info!("  - API key: [SET]");
+            }
+            Arc::new(ClaudeAgent::with_config(config))
+        }
         AgentType::Gemini => {
             let config = GeminiAgentConfig::from_env();
             info!("🔧 Creating Gemini CLI agent");
@@ -63,8 +79,8 @@ pub fn create_agent(agent_type: AgentType) -> Arc<dyn CodeAgent> {
 /// Create a code agent from environment variables
 ///
 /// Reads the `AGENT_TYPE` environment variable to determine which agent to create.
-/// **Default: Gemini** - If `AGENT_TYPE` is not set, empty, or has an invalid value,
-/// the system will automatically use Gemini Agent as the default.
+/// **Default: Claude** - If `AGENT_TYPE` is not set, empty, or has an invalid value,
+/// the system will automatically use Claude Code Agent as the default.
 pub fn create_agent_from_env() -> Arc<dyn CodeAgent> {
     // Read AGENT_TYPE from environment
     let agent_type_env = std::env::var("AGENT_TYPE").ok();
@@ -85,7 +101,7 @@ pub fn create_agent_from_env() -> Arc<dyn CodeAgent> {
         .and_then(|s| {
             let trimmed = s.trim();
             if trimmed.is_empty() {
-                warn!("⚠️ AGENT_TYPE is set but empty, defaulting to Gemini");
+                warn!("⚠️ AGENT_TYPE is set but empty, defaulting to Claude Code");
                 None
             } else {
                 AgentType::from_str(trimmed)
@@ -95,15 +111,15 @@ pub fn create_agent_from_env() -> Arc<dyn CodeAgent> {
             // Log when falling back to default
             match &agent_type_env {
                 Some(val) => {
-                    warn!("⚠️ Invalid AGENT_TYPE value '{}', defaulting to Gemini", val);
+                    warn!("⚠️ Invalid AGENT_TYPE value '{}', defaulting to Claude Code", val);
                 }
                 None => {
-                    info!("ℹ️ AGENT_TYPE not specified, using default: Gemini");
+                    info!("ℹ️ AGENT_TYPE not specified, using default: Claude Code");
                 }
             }
-            Some(AgentType::Gemini)
+            Some(AgentType::Claude)
         })
-        .unwrap_or(AgentType::Gemini); // Final fallback (should never reach here)
+        .unwrap_or(AgentType::Claude); // Final fallback (should never reach here)
 
     info!("🤖 Selected code analysis agent: {}", agent_type.name());
 
@@ -116,6 +132,9 @@ mod tests {
 
     #[test]
     fn test_agent_type_from_str() {
+        assert_eq!(AgentType::from_str("claude"), Some(AgentType::Claude));
+        assert_eq!(AgentType::from_str("Claude"), Some(AgentType::Claude));
+        assert_eq!(AgentType::from_str("CLAUDE"), Some(AgentType::Claude));
         assert_eq!(AgentType::from_str("gemini"), Some(AgentType::Gemini));
         assert_eq!(AgentType::from_str("Gemini"), Some(AgentType::Gemini));
         assert_eq!(AgentType::from_str("GEMINI"), Some(AgentType::Gemini));
@@ -127,6 +146,7 @@ mod tests {
 
     #[test]
     fn test_agent_type_name() {
+        assert_eq!(AgentType::Claude.name(), "Claude Code");
         assert_eq!(AgentType::Gemini.name(), "Gemini CLI");
         assert_eq!(AgentType::Cursor.name(), "Cursor Agent");
     }

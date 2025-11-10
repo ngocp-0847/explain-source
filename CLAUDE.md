@@ -8,7 +8,7 @@ QA Chatbot MVP - A bilingual (Vietnamese UI) application that helps QA engineers
 
 **Core Architecture**:
 ```
-Frontend (Next.js/React) ←→ WebSocket ←→ Backend (Rust/Axum) ←→ Cursor Agent (simulated)
+Frontend (Next.js/React) ←→ WebSocket ←→ Backend (Rust/Axum) ←→ Code Analysis Agents (Claude Code, Gemini CLI, Cursor Agent)
 ```
 
 ## Initial Setup
@@ -98,7 +98,9 @@ The `.env` file contains all configuration in one place - no need to remember or
 
 Edit `AGENT_TYPE` in `rust-backend/.env`:
 ```bash
-# Choose your agent (default: gemini)
+# Choose your agent (default: claude)
+AGENT_TYPE=claude  # Use Claude Code (default, recommended)
+# or
 AGENT_TYPE=gemini  # Use Gemini CLI
 # or
 AGENT_TYPE=cursor  # Use Cursor Agent
@@ -107,6 +109,14 @@ AGENT_TYPE=cursor  # Use Cursor Agent
 #### Available Configuration Options
 
 All options can be set in `rust-backend/.env` file. See `.env.example` for full documentation.
+
+**Claude Code Agent Configuration:**
+- `CLAUDE_AGENT_PATH`: Path to claude executable (default: `"claude"`)
+- `CLAUDE_AGENT_TIMEOUT`: Timeout in seconds (default: `300`)
+- `CLAUDE_AGENT_MAX_RETRIES`: Maximum retry attempts (default: `2`)
+- `CLAUDE_AGENT_WORKING_DIR`: Working directory for analysis (optional)
+- `CLAUDE_AGENT_OUTPUT_FORMAT`: Output format (default: `stream-json`)
+- `CLAUDE_API_KEY`: API key for Claude (optional)
 
 **Gemini CLI Configuration:**
 - `GEMINI_AGENT_PATH`: Path to gemini executable (default: `"gemini"`)
@@ -123,6 +133,24 @@ All options can be set in `rust-backend/.env` file. See `.env.example` for full 
 - `CURSOR_AGENT_WORKING_DIR`: Working directory for analysis (optional)
 - `CURSOR_AGENT_OUTPUT_FORMAT`: Output format (default: `stream-json`)
 - `CURSOR_API_KEY`: API key for Cursor (optional)
+
+#### Claude Code CLI Setup
+
+Before using Claude Code agent, install the Claude CLI:
+```bash
+# Install Claude CLI globally
+npm install -g @anthropic-ai/claude-cli
+
+# Verify installation
+claude --version
+
+# Login to your Anthropic account (one-time setup)
+claude login
+
+# After successful login, backend can use Claude Code non-interactively
+```
+
+Reference: [Claude Code Headless Mode Documentation](https://code.claude.com/docs/en/headless)
 
 #### Gemini CLI Setup
 
@@ -142,10 +170,16 @@ gemini
 
 You can still override `.env` values with command-line environment variables:
 ```bash
-# Temporarily use Cursor Agent (without editing .env)
+# Temporarily use Gemini Agent (without editing .env)
+AGENT_TYPE=gemini cargo run
+
+# Temporarily use Cursor Agent
 AGENT_TYPE=cursor cargo run
 
-# Override timeout for this run only
+# Override timeout for Claude Code agent this run only
+CLAUDE_AGENT_TIMEOUT=600 cargo run
+
+# Override timeout for Gemini CLI
 GEMINI_AGENT_TIMEOUT=600 cargo run
 ```
 
@@ -186,7 +220,10 @@ Access points:
 - **Components**:
   - `main.rs`: Server setup, routing, health check
   - `websocket_handler.rs`: WebSocket connection handling
-  - `cursor_agent.rs`: Cursor Agent integration (currently simulated)
+  - `claude_agent.rs`: Claude Code Agent integration (headless mode)
+  - `gemini_agent.rs`: Gemini CLI Agent integration
+  - `cursor_agent.rs`: Cursor Agent integration
+  - `agent_factory.rs`: Agent selection and initialization
 
 ### Real-Time Communication Flow
 
@@ -221,9 +258,10 @@ Access points:
 1. User creates a ticket in "Todo" column
 2. Drag ticket to "In Progress" → **Triggers WebSocket message** to backend
 3. Backend receives `start-code-analysis` event
-4. Backend invokes Cursor Agent (currently simulated)
-5. Backend streams results back via WebSocket
-6. Frontend displays real-time analysis in chat interface
+4. Backend invokes Code Analysis Agent (Claude Code by default, or Gemini/Cursor)
+5. Agent analyzes code in the project directory
+6. Backend streams analysis results back via WebSocket
+7. Frontend displays real-time analysis in chat interface
 
 ### TypeScript Types
 
@@ -291,23 +329,24 @@ pub struct AppState {
 
 ## Known Limitations
 
-1. **Cursor Agent**: Currently simulated, not integrated with real Cursor Agent
-2. **Persistence**: No database - tickets stored in-memory only
-3. **Authentication**: No auth system
-4. **Error Handling**: Basic error logging, no user-facing error UI
-5. **Chat History**: Chat messages not persisted or shared across sessions
+1. **Code Analysis Agents**: Requires CLI installation (Claude Code recommended, Gemini CLI or Cursor Agent as alternatives)
+2. **Authentication**: No auth system
+3. **Error Handling**: Basic error logging, no user-facing error UI
+4. **Multi-user**: Session data not shared across users
+5. **Rate Limiting**: No rate limiting on agent API calls
 
 ## Future Extension Points
 
-The README.md mentions planned features:
-- Real Cursor Agent integration
-- Database for ticket/chat persistence
-- Authentication system
-- File upload for source code analysis
-- Advanced code analysis types
+Planned features for enhancement:
+- **Authentication system**: User accounts and session management
+- **Rate limiting**: API rate limiting for agent calls
+- **Advanced analysis**: Support for custom analysis prompts and templates
+- **Multi-project**: Better project workspace management
+- **Agent orchestration**: Automatic agent selection based on query type
+- **Caching**: Cache analysis results for repeated queries
 
 When implementing these, consider:
-- Database: Likely PostgreSQL or SQLite with async driver (sqlx, diesel-async)
+- Database: Currently using SQLite with sqlx async driver
 - Auth: JWT tokens via Axum middleware
-- File upload: Multipart form handling in Axum
-- Cursor Agent: Replace `cursor_agent.rs` simulation with real API client
+- Caching: Redis or in-memory cache for agent responses
+- Agent API: Abstract agent interface allows easy addition of new providers

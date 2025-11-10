@@ -12,6 +12,7 @@ use tracing::{info, warn};
 
 mod agent_factory;
 mod api_handlers;
+mod claude_agent;
 mod code_agent;
 mod cursor_agent;
 mod database;
