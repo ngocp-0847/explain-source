@@ -92,8 +92,17 @@ export const ticketApi = {
     return res.status === 204;
   },
 
-  getLogs: async (id: string) => {
-    const res = await fetch(`${API_BASE}/tickets/${id}/logs`);
+  getLogs: async (id: string, options?: { limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) {
+      params.append('limit', options.limit.toString());
+    }
+    if (options?.offset !== undefined) {
+      params.append('offset', options.offset.toString());
+    }
+    const queryString = params.toString();
+    const url = `${API_BASE}/tickets/${id}/logs${queryString ? `?${queryString}` : ''}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to get ticket logs');
     return res.json();
   },

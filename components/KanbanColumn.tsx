@@ -30,8 +30,8 @@ export function KanbanColumn({
   return (
     <div className={`kanban-column ${color}`}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-700">{title}</h3>
-        <Badge variant="outline">{tickets.length}</Badge>
+        <h3 className="font-semibold text-gray-900">{title}</h3>
+        <Badge variant="outline" className="bg-white/80 text-gray-700 border-gray-200">{tickets.length}</Badge>
       </div>
 
       <SortableContext 

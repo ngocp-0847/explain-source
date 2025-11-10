@@ -19,7 +19,15 @@ module.exports = {
       script: 'cargo',
       args: 'run',
       cwd: './rust-backend',
-      watch: false,
+      watch: true,
+      watch_delay: 2000,
+      ignore_watch: [
+        'target',
+        '.git',
+        'logs',
+        '*.log',
+        'Cargo.lock'
+      ],
       interpreter: 'none',
       env: {
         RUST_LOG: 'info',

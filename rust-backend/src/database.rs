@@ -413,11 +413,75 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_logs_for_ticket(&self, ticket_id: &str) -> Result<Vec<StructuredLogRecord>> {
-        let logs = sqlx::query(
-            "SELECT id, ticket_id, message_type, content, raw_log, metadata, timestamp FROM structured_logs WHERE ticket_id = ?1 ORDER BY timestamp ASC"
+    pub async fn save_logs_batch(&self, logs: &[StructuredLogRecord]) -> Result<()> {
+        if logs.is_empty() {
+            return Ok(());
+        }
+
+        // Use a transaction for batch insert
+        let mut tx = self.pool.begin().await?;
+
+        for log in logs {
+            sqlx::query(
+                r#"
+                INSERT INTO structured_logs (id, ticket_id, message_type, content, raw_log, metadata, timestamp)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+            )
+            .bind(&log.id)
+            .bind(&log.ticket_id)
+            .bind(&log.message_type)
+            .bind(&log.content)
+            .bind(&log.raw_log)
+            .bind(&log.metadata)
+            .bind(&log.timestamp)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
+    pub async fn count_logs_for_ticket(&self, ticket_id: &str) -> Result<u64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM structured_logs WHERE ticket_id = ?1"
         )
         .bind(ticket_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count as u64)
+    }
+
+    pub async fn get_logs_for_ticket(
+        &self,
+        ticket_id: &str,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<StructuredLogRecord>> {
+        // Ensure limit is always valid: minimum 1, maximum 1000, default 100
+        let limit = limit.unwrap_or(100).clamp(1, 1000);
+        let offset = offset.unwrap_or(0);
+
+        tracing::debug!(
+            "get_logs_for_ticket: ticket_id={}, limit={}, offset={}",
+            ticket_id,
+            limit,
+            offset
+        );
+
+        let logs = sqlx::query(
+            "SELECT id, ticket_id, message_type, content, raw_log, metadata, timestamp 
+             FROM structured_logs 
+             WHERE ticket_id = ?1 
+             ORDER BY timestamp ASC 
+             LIMIT ?2 OFFSET ?3"
+        )
+        .bind(ticket_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
         .fetch_all(&self.pool)
         .await?;
 
@@ -568,6 +632,32 @@ impl Database {
             // Mark as applied
             sqlx::query("INSERT INTO migrations (name, applied_at) VALUES (?1, ?2)")
                 .bind(migration_name)
+                .bind(chrono::Utc::now().to_rfc3339())
+                .execute(&self.pool)
+                .await?;
+        }
+
+        // Run 002_add_cancelled_status if not applied
+        let migration_name_002 = "002_add_cancelled_status";
+        let exists_002 = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM migrations WHERE name = ?1"
+        )
+        .bind(migration_name_002)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if exists_002 == 0 {
+            // Read migration SQL file
+            let migration_sql = include_str!("../migrations/002_add_cancelled_status.sql");
+            
+            // Execute migration SQL
+            sqlx::query(migration_sql)
+                .execute(&self.pool)
+                .await?;
+            
+            // Mark as applied
+            sqlx::query("INSERT INTO migrations (name, applied_at) VALUES (?1, ?2)")
+                .bind(migration_name_002)
                 .bind(chrono::Utc::now().to_rfc3339())
                 .execute(&self.pool)
                 .await?;

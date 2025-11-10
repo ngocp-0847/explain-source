@@ -70,6 +70,13 @@ export interface RawStructuredLog {
   timestamp: string
 }
 
+// Paginated logs response từ backend
+export interface PaginatedLogsResponse {
+  logs: RawStructuredLog[]
+  total: number
+  has_more: boolean
+}
+
 export interface StructuredLogMessage extends WebSocketMessage {
   message_type: 'structured-log'
   log: RawStructuredLog

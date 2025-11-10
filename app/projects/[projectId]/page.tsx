@@ -13,7 +13,7 @@ import {
   DragOverlay
 } from '@dnd-kit/core'
 import { KanbanBoard } from '@/components/KanbanBoard'
-import { ChatInterface } from '@/components/ChatInterface'
+import { ChatPopup } from '@/components/ChatPopup'
 import { TicketFormDialog } from '@/components/TicketFormDialog'
 import { TicketDetailDialog } from '@/components/TicketDetailDialog'
 import { useTicketStore } from '@/stores/ticketStore'
@@ -105,9 +105,16 @@ export default function ProjectDetailPage() {
       try {
         const data = await ticketApi.list(projectId)
         setTickets(data.map((t: any) => ({
-          ...t,
+          id: t.id,
+          projectId: t.project_id, // Map snake_case to camelCase
+          title: t.title,
+          description: t.description,
+          status: t.status,
           createdAt: new Date(t.created_at),
           updatedAt: t.updated_at ? new Date(t.updated_at) : undefined,
+          codeContext: t.code_context,
+          analysisResult: t.analysis_result,
+          isAnalyzing: t.is_analyzing,
           logs: [], // Khởi tạo empty array
         })))
       } catch (error) {
@@ -260,7 +267,7 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100" suppressHydrationWarning>
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -298,40 +305,32 @@ export default function ProjectDetailPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <DndContext 
-              sensors={sensors}
-              collisionDetection={closestCorners}
-              onDragStart={handleDragStart} 
-              onDragEnd={handleDragEnd}
-            >
-              <KanbanBoard
-                onEditTicket={handleEditTicket}
-                onCardClick={handleCardClick}
-              />
-              <DragOverlay>
-                {draggedTicket ? (
-                  <Card className="kanban-card opacity-90 shadow-2xl rotate-3 scale-105">
-                    <CardContent className="p-2">
-                      <div className="flex items-start">
-                        <GripVertical className="w-5 h-5 text-gray-400 mr-1.5" />
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-1">{draggedTicket.title}</h4>
-                          <p className="text-sm text-gray-600">{draggedTicket.description}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          </div>
-
-          <div className="lg:col-span-1">
-            <ChatInterface isConnected={isConnected} />
-          </div>
-        </div>
+        <DndContext 
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart} 
+          onDragEnd={handleDragEnd}
+        >
+          <KanbanBoard
+            onEditTicket={handleEditTicket}
+            onCardClick={handleCardClick}
+          />
+          <DragOverlay>
+            {draggedTicket ? (
+              <Card className="kanban-card opacity-90 shadow-2xl rotate-3 scale-105">
+                <CardContent className="p-2">
+                  <div className="flex items-start">
+                    <GripVertical className="w-5 h-5 text-gray-400 mr-1.5" />
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-1">{draggedTicket.title}</h4>
+                      <p className="text-sm text-gray-600">{draggedTicket.description}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </main>
 
       <TicketFormDialog />
@@ -341,6 +340,7 @@ export default function ProjectDetailPage() {
         onClose={closeProjectSettings}
         project={selectedProject}
       />
+      <ChatPopup isConnected={isConnected} />
     </div>
   )
 }

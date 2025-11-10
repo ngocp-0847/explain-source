@@ -5,7 +5,6 @@ use crate::message_store::MsgStore;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -100,41 +99,6 @@ impl GeminiAgent {
         Self { config }
     }
 
-    /// Normalize path thành absolute path
-    /// Convert relative path thành absolute path để đảm bảo cmd.current_dir() hoạt động đúng
-    async fn normalize_path(path: &str) -> Result<String> {
-        let path_buf = PathBuf::from(path);
-        
-        // Nếu đã là absolute path, canonicalize nó
-        if path_buf.is_absolute() {
-            match tokio::fs::canonicalize(&path_buf).await {
-                Ok(canonical) => Ok(canonical.to_string_lossy().to_string()),
-                Err(e) => {
-                    error!("⚠️ Không thể canonicalize absolute path {}: {}", path, e);
-                    Err(anyhow::anyhow!("Cannot canonicalize path: {}", e))
-                }
-            }
-        } else {
-            // Nếu là relative path, convert thành absolute dựa trên current working directory
-            match std::env::current_dir() {
-                Ok(current_dir) => {
-                    let absolute_path = current_dir.join(&path_buf);
-                    match tokio::fs::canonicalize(&absolute_path).await {
-                        Ok(canonical) => Ok(canonical.to_string_lossy().to_string()),
-                        Err(e) => {
-                            error!("⚠️ Không thể canonicalize relative path {} (resolved to {}): {}", path, absolute_path.display(), e);
-                            Err(anyhow::anyhow!("Cannot canonicalize path: {}", e))
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("⚠️ Không thể lấy current working directory: {}", e);
-                    Err(anyhow::anyhow!("Cannot get current directory: {}", e))
-                }
-            }
-        }
-    }
-
     async fn execute_gemini_agent(
         &self,
         request: &CodeAnalysisRequest,
@@ -143,33 +107,16 @@ impl GeminiAgent {
         normalizer: &LogNormalizer,
     ) -> Result<String> {
         info!("🎯 Executing Gemini analysis for: {}", request.code_context);
-
-        // Normalize và validate working directory
-        // Ưu tiên working_directory từ project hơn config working_dir
-        let analysis_dir = if let Some(ref dir) = working_directory {
-            info!("📂 Project working directory (original): {}", dir);
-            let normalized = Self::normalize_path(dir).await?;
-            info!("📂 Project working directory (normalized): {}", normalized);
-            Some(normalized)
-        } else if let Some(ref dir) = self.config.working_dir {
-            info!("📂 Config working directory (original): {}", dir);
-            let normalized = Self::normalize_path(dir).await?;
-            info!("📂 Config working directory (normalized): {}", normalized);
-            Some(normalized)
-        } else {
-            None
-        };
-
-        // Validate directory exists and is accessible
+        
+        // Validate working directory and code_context path
+        let analysis_dir = working_directory.or(self.config.working_dir.clone());
         if let Some(ref dir) = analysis_dir {
+            info!("📂 Analysis scope: {}", dir);
+            // Validate directory exists and is accessible
             if let Err(e) = tokio::fs::metadata(dir).await {
                 error!("⚠️ Không thể access directory {}: {}", dir, e);
-                return Err(
-                    GeminiAgentError::DirectoryNotAccessible(dir.clone()).into()
-                );
+                return Err(GeminiAgentError::DirectoryNotAccessible(dir.clone()).into());
             }
-        } else {
-            warn!("⚠️ Không có working directory được chỉ định, Gemini sẽ chạy trong thư mục hiện tại");
         }
 
         // Validate executable exists
@@ -254,29 +201,14 @@ impl GeminiAgent {
         debug!("Prompt: {}", prompt);
 
         // Build Gemini CLI command
-        // Format according to official docs: gemini -p "prompt" --output-format stream-json
+        // Format: gemini -p "prompt" (non-interactive mode)
+        // Note: Gemini CLI does not support --output-format flag
+        // Output will be parsed automatically based on actual format returned
         // Reference: https://github.com/google-gemini/gemini-cli
         let mut cmd = Command::new(&self.config.executable_path);
 
-        // Add -p flag with prompt (as per official documentation)
+        // Add -p flag with prompt for non-interactive mode
         cmd.arg("-p").arg(&prompt);
-
-        // Add output format flags
-        match self.config.output_format {
-            OutputFormat::Text => {
-                // Default text format - no flag needed
-            }
-            OutputFormat::Json => {
-                cmd.arg("--output-format").arg("json");
-            }
-            OutputFormat::StreamJson => {
-                cmd.arg("--output-format").arg("stream-json");
-            }
-            OutputFormat::StreamPartialOutput => {
-                // Map to stream-json (no separate partial output flag exists)
-                cmd.arg("--output-format").arg("stream-json");
-            }
-        }
 
         // Set working directory với absolute path đã được normalize
         if let Some(ref dir) = working_directory {
@@ -591,30 +523,16 @@ impl CodeAgent for GeminiAgent {
         msg_store.push(entry).await;
         logs.push(start_log.to_string());
 
-        // Get project directory và normalize thành absolute path
+        // Get project directory for analysis scope
         let working_directory = if !request.project_id.is_empty() {
             if let Ok(Some(project)) = database.get_project(&request.project_id).await {
-                info!("📂 Project directory path (from DB): {}", project.directory_path);
-                
-                // Normalize path thành absolute path ngay khi lấy từ database
-                match Self::normalize_path(&project.directory_path).await {
-                    Ok(normalized_path) => {
-                        info!("📂 Project directory path (normalized): {}", normalized_path);
-                        Some(normalized_path)
-                    }
-                    Err(e) => {
-                        error!("⚠️ Không thể normalize project directory path {}: {}", project.directory_path, e);
-                        // Vẫn thử dùng path gốc nếu normalize fail (có thể path đã là absolute)
-                        warn!("⚠️ Sử dụng directory path gốc: {}", project.directory_path);
-                        Some(project.directory_path)
-                    }
-                }
+                info!("📂 Working directory: {}", project.directory_path);
+                Some(project.directory_path)
             } else {
                 error!("⚠️ Không tìm thấy project {}", request.project_id);
                 None
             }
         } else {
-            warn!("⚠️ Request không có project_id, không thể xác định working directory");
             None
         };
 

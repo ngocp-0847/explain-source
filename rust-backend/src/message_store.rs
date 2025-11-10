@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use tracing::error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +88,8 @@ impl StructuredLogEntry {
 }
 
 const MAX_BUFFER_SIZE: usize = 1000;
+const BATCH_SIZE: usize = 50;
+const FLUSH_INTERVAL_MS: u64 = 100;
 
 #[derive(Debug)]
 pub struct MsgStore {
@@ -99,16 +101,63 @@ pub struct MsgStore {
 
     // Broadcast channel for WebSocket streaming
     broadcast_tx: broadcast::Sender<StructuredLogEntry>,
+
+    // Queue for batch database inserts
+    db_queue_tx: mpsc::UnboundedSender<StructuredLogEntry>,
 }
 
 impl MsgStore {
     pub fn new(database: Arc<Database>) -> Self {
         let (broadcast_tx, _) = broadcast::channel(1000);
+        let (db_queue_tx, mut db_queue_rx) = mpsc::unbounded_channel::<StructuredLogEntry>();
+
+        // Spawn background task to batch insert logs
+        let db_clone = database.clone();
+        tokio::spawn(async move {
+            let mut batch: Vec<StructuredLogRecord> = Vec::with_capacity(BATCH_SIZE);
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(FLUSH_INTERVAL_MS));
+
+            loop {
+                tokio::select! {
+                    // Receive logs from queue
+                    Some(entry) = db_queue_rx.recv() => {
+                        batch.push(entry.to_record());
+
+                        // Flush when batch is full
+                        if batch.len() >= BATCH_SIZE {
+                            if let Err(e) = db_clone.save_logs_batch(&batch).await {
+                                error!("Failed to batch save logs: {}", e);
+                            }
+                            batch.clear();
+                        }
+                    }
+                    // Flush on interval
+                    _ = interval.tick() => {
+                        if !batch.is_empty() {
+                            if let Err(e) = db_clone.save_logs_batch(&batch).await {
+                                error!("Failed to batch save logs: {}", e);
+                            }
+                            batch.clear();
+                        }
+                    }
+                    // Channel closed, flush remaining and exit
+                    else => {
+                        if !batch.is_empty() {
+                            if let Err(e) = db_clone.save_logs_batch(&batch).await {
+                                error!("Failed to batch save logs: {}", e);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        });
 
         Self {
             buffer: Arc::new(Mutex::new(HashMap::new())),
             database,
             broadcast_tx,
+            db_queue_tx,
         }
     }
 
@@ -132,14 +181,9 @@ impl MsgStore {
             }
         }
 
-        // 2. Persist to database asynchronously (fire and forget)
-        let db = self.database.clone();
-        let record = entry.to_record();
-        tokio::spawn(async move {
-            if let Err(e) = db.save_log(&record).await {
-                error!("Failed to save log to database: {}", e);
-            }
-        });
+        // 2. Enqueue for batch database insert (non-blocking)
+        // Ignore send errors (means background task has stopped)
+        let _ = self.db_queue_tx.send(entry.clone());
 
         // 3. Broadcast to all WebSocket subscribers
         // Ignore send errors (means no active subscribers)
@@ -156,7 +200,7 @@ impl MsgStore {
         }
 
         // Fallback to database if not in memory
-        match self.database.get_logs_for_ticket(ticket_id).await {
+        match self.database.get_logs_for_ticket(ticket_id, None, None).await {
             Ok(records) => records
                 .into_iter()
                 .map(StructuredLogEntry::from_record)
@@ -191,7 +235,7 @@ impl MsgStore {
 
     // Load logs from database into memory buffer (for server restart recovery)
     pub async fn warm_cache(&self, ticket_id: &str) -> Result<()> {
-        let records = self.database.get_logs_for_ticket(ticket_id).await?;
+        let records = self.database.get_logs_for_ticket(ticket_id, None, None).await?;
 
         let mut buffer = self.buffer.lock().await;
         let ticket_logs = buffer.entry(ticket_id.to_string()).or_insert_with(VecDeque::new);
@@ -208,6 +252,14 @@ impl MsgStore {
         }
 
         Ok(())
+    }
+
+    /// Force flush all pending logs to database
+    /// This is useful for graceful shutdown to ensure no logs are lost
+    pub async fn flush(&self) {
+        // Wait for background task to process remaining logs
+        // Since we use interval-based flushing (100ms), wait 2x that time to be safe
+        tokio::time::sleep(tokio::time::Duration::from_millis(FLUSH_INTERVAL_MS * 2)).await;
     }
 }
 

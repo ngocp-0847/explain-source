@@ -10,9 +10,9 @@ interface KanbanBoardProps {
 }
 
 const columns: { id: TicketStatus; title: string; color: string }[] = [
-  { id: 'todo', title: 'Cần Làm', color: 'bg-gray-100' },
-  { id: 'in-progress', title: 'Đang Xử Lý', color: 'bg-blue-100' },
-  { id: 'done', title: 'Hoàn Thành', color: 'bg-green-100' }
+  { id: 'todo', title: 'Cần Làm', color: 'bg-yellow-50' },
+  { id: 'in-progress', title: 'Đang Xử Lý', color: 'bg-blue-50' },
+  { id: 'done', title: 'Hoàn Thành', color: 'bg-green-50' }
 ]
 
 export function KanbanBoard({ onEditTicket, onCardClick }: KanbanBoardProps) {

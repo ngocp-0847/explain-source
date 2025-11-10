@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
 };
@@ -37,6 +37,19 @@ pub struct CreateTicketRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateStatusRequest {
     pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogsQueryParams {
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaginatedLogsResponse {
+    pub logs: Vec<StructuredLogRecord>,
+    pub total: u64,
+    pub has_more: bool,
 }
 
 // GET /api/projects
@@ -196,15 +209,62 @@ pub async fn update_ticket_status(
 // GET /api/tickets/:id/logs
 pub async fn get_ticket_logs(
     Path(id): Path<String>,
+    Query(params): Query<LogsQueryParams>,
     State(state): State<AppState>,
-) -> Result<Json<Vec<StructuredLogRecord>>, StatusCode> {
-    match state.database.get_logs_for_ticket(&id).await {
-        Ok(logs) => Ok(Json(logs)),
-        Err(e) => {
-            tracing::error!("Failed to get ticket logs: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+) -> Result<Json<PaginatedLogsResponse>, StatusCode> {
+    // Validate and log pagination parameters
+    let limit = params.limit;
+    let offset = params.offset;
+    
+    tracing::debug!(
+        "API get_ticket_logs: ticket_id={}, limit={:?}, offset={:?}",
+        id,
+        limit,
+        offset
+    );
+
+    // Validate limit if provided
+    if let Some(lim) = limit {
+        if lim == 0 {
+            tracing::warn!("Invalid limit=0 requested, will use default");
+        } else if lim > 1000 {
+            tracing::warn!("Limit {} exceeds maximum 1000, will be capped", lim);
         }
     }
+
+    // Get total count
+    let total = match state.database.count_logs_for_ticket(&id).await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::error!("Failed to count ticket logs: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    // Get paginated logs
+    let logs = match state.database.get_logs_for_ticket(&id, limit, offset).await {
+        Ok(logs) => logs,
+        Err(e) => {
+            tracing::error!("Failed to get ticket logs: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    tracing::debug!(
+        "API get_ticket_logs: returned {} logs out of {} total",
+        logs.len(),
+        total
+    );
+
+    // Calculate has_more
+    let offset_val = offset.unwrap_or(0);
+    let has_more = (offset_val + logs.len() as u64) < total;
+
+    Ok(Json(PaginatedLogsResponse {
+        logs,
+        total,
+        has_more,
+    }))
 }
 
 // POST /api/tickets/:id/stop-analysis

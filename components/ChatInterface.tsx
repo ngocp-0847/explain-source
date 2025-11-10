@@ -11,9 +11,10 @@ import { useTicketStore } from '@/stores/ticketStore'
 
 interface ChatInterfaceProps {
   isConnected: boolean
+  hideHeader?: boolean
 }
 
-export function ChatInterface({ isConnected }: ChatInterfaceProps) {
+export function ChatInterface({ isConnected, hideHeader = false }: ChatInterfaceProps) {
   const messages = useChatStore(state => state.messages)
   const addMessage = useChatStore(state => state.addMessage)
   const clearMessages = useChatStore(state => state.clearMessages)
@@ -83,18 +84,20 @@ export function ChatInterface({ isConnected }: ChatInterfaceProps) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[600px] flex flex-col">
-      <div className="p-4 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-900 flex items-center">
-          <BotIcon className="w-5 h-5 mr-2 text-blue-600" />
-          Chat Assistant
-        </h3>
-        {selectedTicket && (
-          <p className="text-sm text-gray-600 mt-1">
-            Đang phân tích: {selectedTicket.title}
-          </p>
-        )}
-      </div>
+    <div className="h-full flex flex-col">
+      {!hideHeader && (
+        <div className="p-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center">
+            <BotIcon className="w-5 h-5 mr-2 text-blue-600" />
+            Chat Assistant
+          </h3>
+          {selectedTicket && (
+            <p className="text-sm text-gray-600 mt-1">
+              Đang phân tích: {selectedTicket.title}
+            </p>
+          )}
+        </div>
+      )}
 
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">

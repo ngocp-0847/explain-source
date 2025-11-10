@@ -5,6 +5,7 @@ import { StructuredLog, LogMessageType } from '@/types/ticket'
 import { Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useTicketStore } from '@/stores/ticketStore'
 
 // Utility function để parse content JSON và extract type
 function parseLogContent(content: string): { 
@@ -110,12 +111,19 @@ function highlightJson(jsonString: string): string {
 interface LogViewerProps {
   logs: StructuredLog[]
   isAnalyzing: boolean
+  ticketId: string
 }
 
-export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
+export function LogViewer({ logs = [], isAnalyzing, ticketId }: LogViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [isLogsExpanded, setIsLogsExpanded] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  
+  const logPagination = useTicketStore(state => state.logPagination.get(ticketId))
+  const loadMoreTicketLogs = useTicketStore(state => state.loadMoreTicketLogs)
+  
+  const hasMore = logPagination?.hasMore ?? false
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
@@ -142,6 +150,19 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
       element.scrollHeight - element.clientHeight - element.scrollTop
     ) < 50
     setAutoScroll(isAtBottom)
+  }
+
+  const handleLoadMore = async () => {
+    if (isLoadingMore || !hasMore) return
+    
+    setIsLoadingMore(true)
+    try {
+      await loadMoreTicketLogs(ticketId)
+    } catch (error) {
+      console.error('Failed to load more logs:', error)
+    } finally {
+      setIsLoadingMore(false)
+    }
   }
 
   // Get merged markdown content from assistant logs
@@ -202,6 +223,25 @@ export function LogViewer({ logs = [], isAnalyzing }: LogViewerProps) {
               <div className="flex items-center gap-2 text-blue-400 py-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Đang phân tích...</span>
+              </div>
+            )}
+
+            {hasMore && !isAnalyzing && (
+              <div className="flex justify-center py-4">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang tải...</span>
+                    </>
+                  ) : (
+                    <span>Tải thêm ({logPagination?.total ? `${logs.length}/${logPagination.total}` : ''})</span>
+                  )}
+                </button>
               </div>
             )}
 

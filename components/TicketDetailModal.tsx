@@ -126,7 +126,7 @@ export function TicketDetailModal({
 
             {/* Log Viewer */}
             <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-              <LogViewer logs={ticket.logs} isAnalyzing={ticket.isAnalyzing} />
+              <LogViewer logs={ticket.logs} isAnalyzing={ticket.isAnalyzing} ticketId={ticket.id} />
             </div>
           </section>
 
